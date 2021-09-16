@@ -1,8 +1,8 @@
 use crate::LOG_DRAIN;
 
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use slog::info;
-use std::collections::HashSet;
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 #[serde(default)]
@@ -17,6 +17,89 @@ pub(crate) struct RuleStrategy {
     pub rule: String,
     pub ranges: Vec<IDRange>,
 }
+impl RuleStrategy {
+    pub fn is_valid_id(&self, id: i64) -> bool {
+        for range in &self.ranges {
+            if id >= range.min && id <= range.max {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+impl IDRange {
+    fn range_includes_special_ids(&self) -> Result<()> {
+        if self.min < 999
+            || self.max < 999
+            || (self.min <= 65534 && self.max >= 65535)
+            || self.min > 4294967294
+            || self.max > 4294967294
+        {
+            return Err(anyhow!(
+                "ID range should be between 1000…65533 and 65536…4294967294"
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn range_min_less_than_max(&self) -> Result<()> {
+        if self.min > self.max {
+            return Err(anyhow!("range min value should be greater than max value"));
+        }
+        Ok(())
+    }
+
+    fn is_valid(&self) -> Result<()> {
+        self.range_includes_special_ids()?;
+        self.range_min_less_than_max()?;
+        Ok(())
+    }
+}
+
+fn valid_ranges(ranges: &[IDRange]) -> Result<()> {
+    let violations: Vec<_> = ranges.iter().filter(|r| r.is_valid().is_err()).collect();
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(anyhow!("Invalid ID range: {:?}", violations))
+    }
+}
+
+fn valid_user_rule_settings(rule: &str, ranges: &[IDRange]) -> Result<()> {
+    match rule {
+        "RunAsAny" | "MustRunAsNonRoot" => Ok(()),
+        "MustRunAs" => {
+            if ranges.is_empty() {
+                Err(anyhow!(
+                    "Invalid run_as_user settings: Missing user ID range",
+                ))
+            } else {
+                valid_ranges(ranges).map_err(|e| anyhow!("Invalid run_as_user settings: {:?}", e))
+            }
+        }
+        _ => Err(anyhow!("Invalid run_as_user settings: invalid rule.")),
+    }
+}
+
+fn valid_group_rule_settings(
+    rule: &str,
+    ranges: &[IDRange],
+    prefix_error_message: &str,
+) -> Result<()> {
+    match rule {
+        "RunAsAny" => Ok(()),
+        "MustRunAs" | "MayRunAs" => {
+            if ranges.is_empty() {
+                Err(anyhow!("{}: missing ID range", prefix_error_message))
+            } else {
+                valid_ranges(ranges).map_err(|e| anyhow!("{}: {:?}", prefix_error_message, e))
+            }
+        }
+        _ => Err(anyhow!("{}: Invalid rule.", prefix_error_message)),
+    }
+}
 // Describe the settings your policy expects when
 // loaded by the policy server.
 #[derive(Serialize, Deserialize, Default, Debug)]
@@ -28,53 +111,33 @@ pub(crate) struct Settings {
 }
 
 impl kubewarden::settings::Validatable for Settings {
-    fn validate(&self) -> Result<(), String> {
+    fn validate(&self) -> core::result::Result<(), String> {
         info!(LOG_DRAIN, "starting settings validation");
-        let allowed_rules_values: HashSet<String> = vec![
-            "RunAsAny".to_string(),
-            "MustRunAs".to_string(),
-            "MustRunAsNonRoot".to_string(),
-        ]
-        .into_iter()
-        .collect();
-        let allowed_group_rules_values: HashSet<String> = vec![
-            "RunAsAny".to_string(),
-            "MustRunAs".to_string(),
-            "MayRunAs".to_string(),
-        ]
-        .into_iter()
-        .collect();
 
-        if !allowed_rules_values.contains(&self.run_as_user.rule) {
-            return Err(String::from("Invalid RunAsUser rule."));
-        } else if &self.run_as_user.rule == "MustRunAs" && self.run_as_user.ranges.is_empty() {
-            return Err(String::from("Missing ID Range"));
-        }
-        if !allowed_group_rules_values.contains(&self.run_as_group.rule) {
-            return Err(String::from("Invalid RunAsGroup rule."));
-        } else if &self.run_as_group.rule == "MustRunAs" && self.run_as_group.ranges.is_empty() {
-            return Err(String::from("Missing ID Range"));
-        }
-        if !allowed_group_rules_values.contains(&self.supplemental_groups.rule) {
-            return Err(String::from("Invalid SupplementalGroups rule."));
-        } else if &self.supplemental_groups.rule == "MustRunAs"
-            && self.supplemental_groups.ranges.is_empty()
-        {
-            return Err(String::from("Missing ID Range"));
-        }
-        for range in &self.run_as_user.ranges {
-            if range.min > range.max {
-                return Err(String::from("Min value greater than max value"));
+        match valid_user_rule_settings(&self.run_as_user.rule, &self.run_as_user.ranges) {
+            Ok(()) => {}
+            Err(error) => {
+                return Err(error.to_string());
+            }
+        };
+        match valid_group_rule_settings(
+            &self.run_as_group.rule,
+            &self.run_as_group.ranges,
+            "Invalid run_as_group settings",
+        ) {
+            Ok(()) => {}
+            Err(error) => {
+                return Err(error.to_string());
             }
         }
-        for range in &self.run_as_group.ranges {
-            if range.min > range.max {
-                return Err(String::from("Min value greater than max value"));
-            }
-        }
-        for range in &self.supplemental_groups.ranges {
-            if range.min > range.max {
-                return Err(String::from("Min value greater than max value"));
+        match valid_group_rule_settings(
+            &self.supplemental_groups.rule,
+            &self.supplemental_groups.ranges,
+            "Invalid supplemental_groups settings",
+        ) {
+            Ok(()) => {}
+            Err(error) => {
+                return Err(error.to_string());
             }
         }
         Ok(())
@@ -115,15 +178,24 @@ mod tests {
             let settings = Settings {
                 run_as_user: RuleStrategy {
                     rule: String::from(rule),
-                    ranges: vec![IDRange { min: 1, max: 10 }],
+                    ranges: vec![IDRange {
+                        min: 1000,
+                        max: 1010,
+                    }],
                 },
                 run_as_group: RuleStrategy {
                     rule: String::from("RunAsAny"),
-                    ranges: vec![IDRange { min: 1, max: 10 }],
+                    ranges: vec![IDRange {
+                        min: 1000,
+                        max: 1010,
+                    }],
                 },
                 supplemental_groups: RuleStrategy {
                     rule: String::from("RunAsAny"),
-                    ranges: vec![IDRange { min: 1, max: 10 }],
+                    ranges: vec![IDRange {
+                        min: 1000,
+                        max: 1010,
+                    }],
                 },
             };
 
@@ -139,15 +211,24 @@ mod tests {
             let settings = Settings {
                 run_as_user: RuleStrategy {
                     rule: String::from("RunAsAny"),
-                    ranges: vec![IDRange { min: 1, max: 10 }],
+                    ranges: vec![IDRange {
+                        min: 1000,
+                        max: 1010,
+                    }],
                 },
                 run_as_group: RuleStrategy {
                     rule: String::from(rule),
-                    ranges: vec![IDRange { min: 1, max: 10 }],
+                    ranges: vec![IDRange {
+                        min: 1000,
+                        max: 1010,
+                    }],
                 },
                 supplemental_groups: RuleStrategy {
                     rule: String::from("RunAsAny"),
-                    ranges: vec![IDRange { min: 1, max: 10 }],
+                    ranges: vec![IDRange {
+                        min: 1000,
+                        max: 1010,
+                    }],
                 },
             };
 
@@ -156,15 +237,24 @@ mod tests {
             let settings = Settings {
                 run_as_user: RuleStrategy {
                     rule: String::from("RunAsAny"),
-                    ranges: vec![IDRange { min: 1, max: 10 }],
+                    ranges: vec![IDRange {
+                        min: 1000,
+                        max: 1010,
+                    }],
                 },
                 run_as_group: RuleStrategy {
                     rule: String::from("RunAsAny"),
-                    ranges: vec![IDRange { min: 1, max: 10 }],
+                    ranges: vec![IDRange {
+                        min: 1000,
+                        max: 1010,
+                    }],
                 },
                 supplemental_groups: RuleStrategy {
                     rule: String::from(rule),
-                    ranges: vec![IDRange { min: 1, max: 10 }],
+                    ranges: vec![IDRange {
+                        min: 1000,
+                        max: 1010,
+                    }],
                 },
             };
 
@@ -254,15 +344,15 @@ mod tests {
     fn validate_id_range_min_should_be_greater_than_max() -> Result<(), ()> {
         let settings = Settings {
             run_as_user: RuleStrategy {
-                rule: String::from("RunAsAny"),
+                rule: String::from("MustRunAs"),
                 ranges: vec![IDRange { min: 11, max: 10 }],
             },
             run_as_group: RuleStrategy {
-                rule: String::from("RunAsAny"),
+                rule: String::from("MustRunAs"),
                 ranges: vec![IDRange { min: 1, max: 10 }],
             },
             supplemental_groups: RuleStrategy {
-                rule: String::from("RunAsAny"),
+                rule: String::from("MustRunAs"),
                 ranges: vec![IDRange { min: 1, max: 10 }],
             },
         };
@@ -274,15 +364,15 @@ mod tests {
 
         let settings = Settings {
             run_as_user: RuleStrategy {
-                rule: String::from("RunAsAny"),
+                rule: String::from("MustRunAs"),
                 ranges: vec![IDRange { min: 1, max: 10 }],
             },
             run_as_group: RuleStrategy {
-                rule: String::from("RunAsAny"),
+                rule: String::from("MustRunAs"),
                 ranges: vec![IDRange { min: 11, max: 10 }],
             },
             supplemental_groups: RuleStrategy {
-                rule: String::from("RunAsAny"),
+                rule: String::from("MustRunAs"),
                 ranges: vec![IDRange { min: 1, max: 10 }],
             },
         };
@@ -294,15 +384,15 @@ mod tests {
 
         let settings = Settings {
             run_as_user: RuleStrategy {
-                rule: String::from("RunAsAny"),
+                rule: String::from("MustRunAs"),
                 ranges: vec![IDRange { min: 1, max: 10 }],
             },
             run_as_group: RuleStrategy {
-                rule: String::from("RunAsAny"),
+                rule: String::from("MustRunAs"),
                 ranges: vec![IDRange { min: 1, max: 10 }],
             },
             supplemental_groups: RuleStrategy {
-                rule: String::from("RunAsAny"),
+                rule: String::from("MustRunAs"),
                 ranges: vec![IDRange { min: 1, max: 10 }, IDRange { min: 11, max: 10 }],
             },
         };
@@ -376,6 +466,191 @@ mod tests {
             "MustRunAs rule requires at least one ID range"
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn linux_reserved_id_should_not_be_allowed() -> Result<(), ()> {
+        let settings = Settings {
+            run_as_user: RuleStrategy {
+                rule: String::from("MustRunAs"),
+                ranges: vec![IDRange { min: 0, max: 999 }],
+            },
+            run_as_group: RuleStrategy {
+                rule: String::from("MustRunAs"),
+                ranges: vec![IDRange { min: 0, max: 999 }],
+            },
+            supplemental_groups: RuleStrategy {
+                rule: String::from("MustRunAs"),
+                ranges: vec![IDRange { min: 0, max: 999 }],
+            },
+        };
+
+        assert!(
+            settings.validate().is_err(),
+            "System users ID should not be allowed"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn overflow_user_id_should_not_be_allowed() -> Result<(), ()> {
+        let settings = Settings {
+            run_as_user: RuleStrategy {
+                rule: String::from("MustRunAs"),
+                ranges: vec![IDRange {
+                    min: 1000,
+                    max: 65536,
+                }],
+            },
+            run_as_group: RuleStrategy {
+                rule: String::from("MustRunAs"),
+                ranges: vec![IDRange {
+                    min: 1000,
+                    max: 65535,
+                }],
+            },
+            supplemental_groups: RuleStrategy {
+                rule: String::from("MustRunAs"),
+                ranges: vec![IDRange {
+                    min: 1000,
+                    max: 65534,
+                }],
+            },
+        };
+
+        assert!(
+            settings.validate().is_err(),
+            "Overflow user and old linux user ID limit should not be allowed in ID ranges"
+        );
+
+        let settings = Settings {
+            run_as_user: RuleStrategy {
+                rule: String::from("MustRunAs"),
+                ranges: vec![IDRange {
+                    min: 65534,
+                    max: 70000,
+                }],
+            },
+            run_as_group: RuleStrategy {
+                rule: String::from("MustRunAs"),
+                ranges: vec![IDRange {
+                    min: 65535,
+                    max: 70000,
+                }],
+            },
+            supplemental_groups: RuleStrategy {
+                rule: String::from("MustRunAs"),
+                ranges: vec![IDRange {
+                    min: 1000,
+                    max: 65534,
+                }],
+            },
+        };
+
+        assert!(
+            settings.validate().is_err(),
+            "Overflow user and old linux user ID limit should not be allowed in ID ranges"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn id_should_be_valid_if_it_exists_in_ranges() -> Result<(), ()> {
+        let rule_strategy = RuleStrategy {
+            rule: String::from("MustRunAs"),
+            ranges: vec![IDRange {
+                min: 1000,
+                max: 2000,
+            }],
+        };
+        let is_valid = rule_strategy.is_valid_id(1000);
+        assert!(is_valid);
+        let rule_strategy = RuleStrategy {
+            rule: String::from("MustRunAs"),
+            ranges: vec![
+                IDRange {
+                    min: 1000,
+                    max: 2000,
+                },
+                IDRange {
+                    min: 500,
+                    max: 1500,
+                },
+            ],
+        };
+        let is_valid = rule_strategy.is_valid_id(1000);
+        assert!(is_valid);
+        let is_valid = rule_strategy.is_valid_id(1499);
+        assert!(is_valid);
+
+        let rule_strategy = RuleStrategy {
+            rule: String::from("MustRunAs"),
+            ranges: vec![IDRange {
+                min: 1000,
+                max: 2000,
+            }],
+        };
+        let is_valid = rule_strategy.is_valid_id(999);
+        assert_eq!(is_valid, false);
+        let is_valid = rule_strategy.is_valid_id(2001);
+        assert_eq!(is_valid, false);
+
+        let rule_strategy = RuleStrategy {
+            rule: String::from("MustRunAs"),
+            ranges: vec![
+                IDRange {
+                    min: 1000,
+                    max: 2000,
+                },
+                IDRange {
+                    min: 500,
+                    max: 1500,
+                },
+            ],
+        };
+        let is_valid = rule_strategy.is_valid_id(2001);
+        assert_eq!(is_valid, false);
+        let is_valid = rule_strategy.is_valid_id(499);
+        assert_eq!(is_valid, false);
+        let is_valid = rule_strategy.is_valid_id(999);
+        assert!(is_valid);
+        let is_valid = rule_strategy.is_valid_id(1501);
+        assert!(is_valid);
+
+        Ok(())
+    }
+
+    #[test]
+    fn id_should_not_be_greater_than_linux_limit() -> Result<(), ()> {
+        let settings = Settings {
+            run_as_user: RuleStrategy {
+                rule: String::from("MustRunAs"),
+                ranges: vec![IDRange {
+                    min: 65536,
+                    max: 4294967295,
+                }],
+            },
+            run_as_group: RuleStrategy {
+                rule: String::from("MustRunAs"),
+                ranges: vec![IDRange {
+                    min: 65536,
+                    max: 4294967295,
+                }],
+            },
+            supplemental_groups: RuleStrategy {
+                rule: String::from("MustRunAs"),
+                ranges: vec![IDRange {
+                    min: 65536,
+                    max: 4294967295,
+                }],
+            },
+        };
+
+        assert!(
+            settings.validate().is_err(),
+            "ID range should not be greater than the Linux limit"
+        );
         Ok(())
     }
 }

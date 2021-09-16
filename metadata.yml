@@ -3,7 +3,7 @@ rules:
   apiVersions: ["v1"]
   resources: ["pods"]
   operations: ["CREATE"]
-mutating: false
+mutating: true
 contextAware: false
 executionMode: kubewarden-wapc
 annotations:
