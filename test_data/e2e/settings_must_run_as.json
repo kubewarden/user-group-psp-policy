@@ -1,0 +1,41 @@
+{
+  "run_as_user": {
+    "rule": "MustRunAs",
+    "ranges": [
+      {
+        "min": 1000,
+        "max": 2000
+      },
+      {
+        "min": 2001,
+        "max": 3000
+      }
+    ]
+  },
+  "run_as_group": {
+    "rule": "MustRunAs",
+    "ranges": [
+      {
+        "min": 1000,
+        "max": 2000
+      },
+      {
+        "min": 2001,
+        "max": 3000
+      }
+    ]
+  },
+  "supplemental_groups": {
+    "rule": "MustRunAs",
+    "ranges": [
+      {
+        "min": 1000,
+        "max": 2000
+      },
+      {
+        "min": 2001,
+        "max": 3000
+      }
+    ]
+  }
+}

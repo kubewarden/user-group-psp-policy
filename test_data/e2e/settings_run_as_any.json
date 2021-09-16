@@ -1,0 +1,11 @@
+{
+  "run_as_user": {
+    "rule": "RunAsAny"
+  },
+  "run_as_group": {
+    "rule": "RunAsAny"
+  },
+  "supplemental_groups": {
+    "rule": "RunAsAny"
+  }
+}
