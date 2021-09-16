@@ -67,6 +67,7 @@ mod tests {
     use super::*;
 
     use kubewarden_policy_sdk::test::Testcase;
+    use settings::{IDRange, RuleStrategy};
 
     #[test]
     fn accept_pod_with_valid_name() -> Result<(), ()> {
@@ -75,7 +76,20 @@ mod tests {
             name: String::from("Valid name"),
             fixture_file: String::from(request_file),
             expected_validation_result: true,
-            settings: Settings {},
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![IDRange { min: 1, max: 10 }],
+                },
+                run_as_group: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![IDRange { min: 1, max: 10 }],
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![IDRange { min: 1, max: 10 }],
+                },
+            },
         };
 
         let res = tc.eval(validate).unwrap();
@@ -95,27 +109,20 @@ mod tests {
             name: String::from("Bad name"),
             fixture_file: String::from(request_file),
             expected_validation_result: false,
-            settings: Settings {},
-        };
-
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "Something mutated with test case: {}",
-            tc.name,
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn accept_request_with_non_pod_resource() -> Result<(), ()> {
-        let request_file = "test_data/ingress_creation.json";
-        let tc = Testcase {
-            name: String::from("Ingress creation"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {},
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![IDRange { min: 1, max: 10 }],
+                },
+                run_as_group: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![IDRange { min: 1, max: 10 }],
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![IDRange { min: 1, max: 10 }],
+                },
+            },
         };
 
         let res = tc.eval(validate).unwrap();
