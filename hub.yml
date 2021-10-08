@@ -2,7 +2,7 @@ name: psp-user-group
 description: A Pod Security Policy that controls the container user and groups
 homepage: https://github.com/kubewarden/psp-user-group
 author:
-  name: José Guilherme Vanz <jguilhermevanz@suse.com>
+  name: Kubewarden devs
   homepage: https://github.com/kubewarden
 download:
   # Important: leave the __TAG__ around: this is automatically replaced with the value of the git tag
