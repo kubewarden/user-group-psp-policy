@@ -10,8 +10,8 @@ annotations:
   io.kubewarden.policy.title: psp-user-group
   io.kubewarden.policy.description: Short description
   io.kubewarden.policy.author: José Guilherme Vanz <jguilhermevanz@suse.com>
-  io.kubewarden.policy.url: https://github.com/kubewarden/psp-user-group
-  io.kubewarden.policy.source: https://github.com/kubewarden/psp-user-group
+  io.kubewarden.policy.url: https://github.com/kubewarden/user-group-psp-policy
+  io.kubewarden.policy.source: https://github.com/kubewarden/user-group-psp-policy
   io.kubewarden.policy.license: Apache-2.0
   io.kubewarden.policy.usage: |
     This policy enforce the user and group used in the container.
