@@ -1,4 +1,4 @@
-name: psp-user-group
+name: user-group-psp
 description: A Pod Security Policy that controls the container user and groups
 homepage: https://github.com/kubewarden/user-group-psp-policy
 author:
@@ -6,7 +6,7 @@ author:
   homepage: https://github.com/kubewarden
 download:
   # Important: leave the __TAG__ around: this is automatically replaced with the value of the git tag
-  registry: ghcr.io/kubewarden/policies/psp-user-group:__TAG__
+  registry: ghcr.io/kubewarden/policies/user-group-psp:__TAG__
   # url is optional
   url: https://github.com/kubewarden/user-group-psp-policy/releases/download/__TAG__/policy.wasm
 keywords:

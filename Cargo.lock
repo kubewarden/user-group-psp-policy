@@ -355,21 +355,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "psp-user-group"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "jsonpath_lib",
- "k8s-openapi",
- "kubewarden-policy-sdk",
- "lazy_static",
- "serde",
- "serde_json",
- "slog",
- "wapc-guest",
-]
-
-[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -532,6 +517,21 @@ dependencies = [
  "idna",
  "matches",
  "percent-encoding",
+]
+
+[[package]]
+name = "user-group-psp"
+version = "0.1.3"
+dependencies = [
+ "anyhow",
+ "jsonpath_lib",
+ "k8s-openapi",
+ "kubewarden-policy-sdk",
+ "lazy_static",
+ "serde",
+ "serde_json",
+ "slog",
+ "wapc-guest",
 ]
 
 [[package]]
