@@ -29,21 +29,6 @@ impl RuleStrategy {
 }
 
 impl IDRange {
-    fn range_includes_special_ids(&self) -> Result<()> {
-        if self.min < 999
-            || self.max < 999
-            || (self.min <= 65534 && self.max >= 65535)
-            || self.min > 4294967294
-            || self.max > 4294967294
-        {
-            return Err(anyhow!(
-                "ID range should be between 1000…65533 and 65536…4294967294"
-            ));
-        }
-
-        Ok(())
-    }
-
     fn range_min_less_than_max(&self) -> Result<()> {
         if self.min > self.max {
             return Err(anyhow!("range min value should be greater than max value"));
@@ -52,7 +37,6 @@ impl IDRange {
     }
 
     fn is_valid(&self) -> Result<()> {
-        self.range_includes_special_ids()?;
         self.range_min_less_than_max()?;
         Ok(())
     }
@@ -470,92 +454,6 @@ mod tests {
     }
 
     #[test]
-    fn linux_reserved_id_should_not_be_allowed() -> Result<(), ()> {
-        let settings = Settings {
-            run_as_user: RuleStrategy {
-                rule: String::from("MustRunAs"),
-                ranges: vec![IDRange { min: 0, max: 999 }],
-            },
-            run_as_group: RuleStrategy {
-                rule: String::from("MustRunAs"),
-                ranges: vec![IDRange { min: 0, max: 999 }],
-            },
-            supplemental_groups: RuleStrategy {
-                rule: String::from("MustRunAs"),
-                ranges: vec![IDRange { min: 0, max: 999 }],
-            },
-        };
-
-        assert!(
-            settings.validate().is_err(),
-            "System users ID should not be allowed"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn overflow_user_id_should_not_be_allowed() -> Result<(), ()> {
-        let settings = Settings {
-            run_as_user: RuleStrategy {
-                rule: String::from("MustRunAs"),
-                ranges: vec![IDRange {
-                    min: 1000,
-                    max: 65536,
-                }],
-            },
-            run_as_group: RuleStrategy {
-                rule: String::from("MustRunAs"),
-                ranges: vec![IDRange {
-                    min: 1000,
-                    max: 65535,
-                }],
-            },
-            supplemental_groups: RuleStrategy {
-                rule: String::from("MustRunAs"),
-                ranges: vec![IDRange {
-                    min: 1000,
-                    max: 65534,
-                }],
-            },
-        };
-
-        assert!(
-            settings.validate().is_err(),
-            "Overflow user and old linux user ID limit should not be allowed in ID ranges"
-        );
-
-        let settings = Settings {
-            run_as_user: RuleStrategy {
-                rule: String::from("MustRunAs"),
-                ranges: vec![IDRange {
-                    min: 65534,
-                    max: 70000,
-                }],
-            },
-            run_as_group: RuleStrategy {
-                rule: String::from("MustRunAs"),
-                ranges: vec![IDRange {
-                    min: 65535,
-                    max: 70000,
-                }],
-            },
-            supplemental_groups: RuleStrategy {
-                rule: String::from("MustRunAs"),
-                ranges: vec![IDRange {
-                    min: 1000,
-                    max: 65534,
-                }],
-            },
-        };
-
-        assert!(
-            settings.validate().is_err(),
-            "Overflow user and old linux user ID limit should not be allowed in ID ranges"
-        );
-        Ok(())
-    }
-
-    #[test]
     fn id_should_be_valid_if_it_exists_in_ranges() -> Result<(), ()> {
         let rule_strategy = RuleStrategy {
             rule: String::from("MustRunAs"),
@@ -618,39 +516,6 @@ mod tests {
         let is_valid = rule_strategy.is_valid_id(1501);
         assert!(is_valid);
 
-        Ok(())
-    }
-
-    #[test]
-    fn id_should_not_be_greater_than_linux_limit() -> Result<(), ()> {
-        let settings = Settings {
-            run_as_user: RuleStrategy {
-                rule: String::from("MustRunAs"),
-                ranges: vec![IDRange {
-                    min: 65536,
-                    max: 4294967295,
-                }],
-            },
-            run_as_group: RuleStrategy {
-                rule: String::from("MustRunAs"),
-                ranges: vec![IDRange {
-                    min: 65536,
-                    max: 4294967295,
-                }],
-            },
-            supplemental_groups: RuleStrategy {
-                rule: String::from("MustRunAs"),
-                ranges: vec![IDRange {
-                    min: 65536,
-                    max: 4294967295,
-                }],
-            },
-        };
-
-        assert!(
-            settings.validate().is_err(),
-            "ID range should not be greater than the Linux limit"
-        );
         Ok(())
     }
 }
