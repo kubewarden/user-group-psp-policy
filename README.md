@@ -1,6 +1,6 @@
-# Kubewarden policy psp-user-group
+# Kubewarden policy user-group-psp
 
-This Kubewarden Policy is a replacement for the Kubernetes Pod Security 
+This Kubewarden Policy is a replacement for the Kubernetes Pod Security
 Policy that controls containers [user and groups](https://kubernetes.io/docs/concepts/policy/pod-security-policy/#users-and-groups).
 
 This policy is used to control users and groups in containers.
@@ -15,10 +15,10 @@ kubectl apply -f - <<EOF
 apiVersion: policies.kubewarden.io/v1alpha2
 kind: ClusterAdmissionPolicy
 metadata:
-  name: psp-user-group
+  name: user-group-psp
 spec:
   policyServer: default
-  module: registry://ghcr.io/kubewarden/policies/psp-user-group:latest
+  module: registry://ghcr.io/kubewarden/policies/user-group-psp:latest
   rules:
   - apiGroups: [""]
     apiVersions: ["v1"]
@@ -28,16 +28,16 @@ spec:
     - UPDATE
   mutating: true
   settings:
-    run_as_user: 
+    run_as_user:
       rule: "MustRunAs"
       ranges:
         - min: 1000
           max: 2000
         - min: 4000
           max: 5000
-    run_as_group: 
+    run_as_group:
       rule: "RunAsAny"
-    supplemental_groups: 
+    supplemental_groups:
       rule: "RunAsAny"
 EOF
 ```
@@ -56,20 +56,20 @@ The policy has three settings:
 All the three settings are JSON objects composed by two attributes: `rule` and `ranges`. The `rule` attribute defines
 the strategy used by the policy to enforce users and groups used in containers. The available strategies are:
 
-* `run_as_user`: 
+* `run_as_user`:
 	* `MustRunAs` - Requires at least one range to be specified. Uses the minimum value of the first range as the default. Validates against all ranges.
-	* `MustRunAsNonRoot` - Requires that the pod be submitted with a non-zero `runAsUser` or have the `USER` directive defined (using a numeric UID) in the image. Pods which have specified neither `runAsNonRoot` nor `runAsUser` settings will be mutated to set `runAsNonRoot=true`, thus requiring a defined non-zero numeric `USER` directive in the container. No default provided. 
+	* `MustRunAsNonRoot` - Requires that the pod be submitted with a non-zero `runAsUser` or have the `USER` directive defined (using a numeric UID) in the image. Pods which have specified neither `runAsNonRoot` nor `runAsUser` settings will be mutated to set `runAsNonRoot=true`, thus requiring a defined non-zero numeric `USER` directive in the container. No default provided.
 	* `RunAsAny` - No default provided. Allows any `runAsUser` to be specified.
-* `run_as_group`: 
+* `run_as_group`:
 	* `MustRunAs` - Requires at least one range to be specified. Uses the minimum value of the first range as the default. Validates against all ranges.
 	* `MayRunAs` - Does not require that `RunAsGroup` be specified. However, when `RunAsGroup` is specified, they have to fall in the defined range.
 	* `RunAsAny` - No default provided. Allows any `runAsGroup` to be specified.
-* `supplemental_groups`: 
+* `supplemental_groups`:
 	* `MustRunAs` - Requires at least one range to be specified. Uses the minimum value of the first range as the default. Validates against all ranges.
 	* `MayRunAs` - Requires at least one range to be specified. Allows `supplementalGroups` to be left unset without providing a default. Validates against all ranges if `supplementalGroups` is set.
 	* `RunAsAny` - No default provided. Allows any `supplementalGroups` to be specified
 
-The `ranges` is a list of JSON objects with two attributes: `min` and `max`. Each range object define the user/group ID range used by the rule. 
+The `ranges` is a list of JSON objects with two attributes: `min` and `max`. Each range object define the user/group ID range used by the rule.
 
 ### Examples
 
@@ -81,11 +81,11 @@ To enforce that user and groups must be set and it should be in the defined rang
     "rule": "MustRunAs",
     "ranges": [
       {
-        "min": 1000, 
+        "min": 1000,
         "max": 1999
       },
       {
-        "min": 3000, 
+        "min": 3000,
         "max": 3999
       }
     ]
@@ -94,11 +94,11 @@ To enforce that user and groups must be set and it should be in the defined rang
     "rule": "MustRunAs",
     "ranges": [
       {
-        "min": 1000, 
+        "min": 1000,
         "max": 1999
       },
       {
-        "min": 3000, 
+        "min": 3000,
         "max": 3999
       }
     ]
@@ -107,11 +107,11 @@ To enforce that user and groups must be set and it should be in the defined rang
     "rule": "MustRunAs",
     "ranges": [
       {
-        "min": 1000, 
+        "min": 1000,
         "max": 1999
       },
       {
-        "min": 3000, 
+        "min": 3000,
         "max": 3999
       }
     ]
@@ -162,11 +162,11 @@ To enforce a group when the container has some group defined
     "rule": "MayRunAs",
     "ranges": [
       {
-        "min": 1000, 
+        "min": 1000,
         "max": 2000
       },
       {
-        "min": 2001, 
+        "min": 2001,
         "max": 3000
       }
     ]
@@ -175,11 +175,11 @@ To enforce a group when the container has some group defined
     "rule": "MayRunAs",
     "ranges": [
       {
-        "min": 1000, 
+        "min": 1000,
         "max": 2000
       },
       {
-        "min": 2001, 
+        "min": 2001,
         "max": 3000
       }
     ]
