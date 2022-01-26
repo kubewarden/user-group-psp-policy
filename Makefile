@@ -1,4 +1,4 @@
-SOURCE_FILES = $(shell test -e src/ && find src -type f)
+SOURCE_FILES := $(shell test -e src/ && find src -type f)
 
 policy.wasm: $(SOURCE_FILES) Cargo.*
 	cargo build --target=wasm32-unknown-unknown --release
