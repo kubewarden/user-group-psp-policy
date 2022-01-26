@@ -10,8 +10,8 @@ fmt:
 lint:
 	cargo clippy -- -D warnings
 
-.PHONY: e2e-test
-e2e-test: build
+.PHONY: e2e-tests
+e2e-tests: build
 	bats e2e.bats
 
 .PHONY: test
