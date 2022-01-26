@@ -1,9 +1,11 @@
-.PHONY: build
-build:
-	cargo build --target=wasm32-unknown-unknown --release
+SOURCE_FILES = $(shell test -e src/ && find src -type f)
 
-annotated-policy.wasm: build
-	kwctl annotate -m metadata.yml -o annotated-policy.wasm target/wasm32-unknown-unknown/release/user_group_psp.wasm
+policy.wasm: $(SOURCE_FILES) Cargo.*
+	cargo build --target=wasm32-unknown-unknown --release
+	mv target/wasm32-unknown-unknown/release/*.wasm policy.wasm
+
+annotated-policy.wasm: policy.wasm metadata.yml
+	kwctl annotate -m metadata.yml -o annotated-policy.wasm policy.wasm
 
 .PHONY: fmt
 fmt:
@@ -24,3 +26,4 @@ test: fmt lint
 .PHONY: clean
 clean:
 	cargo clean
+	rm -f policy.wasm annotated-policy.wasm
