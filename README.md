@@ -53,7 +53,9 @@ The policy has three settings:
 * `run_as_group`:  Controls which primary group ID the containers are run with.
 * `supplemental_groups`: Controls which group IDs containers add.
 
-All the three settings are JSON objects composed by two attributes: `rule` and `ranges`. The `rule` attribute defines
+All three settings have no defaults, just like the deprecated PSP (also, they would get used if `mutating` is `true`).
+
+All three settings are JSON objects composed by two attributes: `rule` and `ranges`. The `rule` attribute defines
 the strategy used by the policy to enforce users and groups used in containers. The available strategies are:
 
 * `run_as_user`:
