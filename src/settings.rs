@@ -11,7 +11,7 @@ pub(crate) struct IDRange {
     pub max: i64,
 }
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(default)]
 pub(crate) struct RuleStrategy {
     pub rule: String,
@@ -25,6 +25,14 @@ impl RuleStrategy {
             }
         }
         false
+    }
+}
+impl Default for RuleStrategy {
+    fn default() -> Self {
+        RuleStrategy {
+            rule: "RunAsAny".to_string(),
+            ranges: vec![],
+        }
     }
 }
 
