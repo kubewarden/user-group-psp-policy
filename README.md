@@ -30,6 +30,7 @@ spec:
   settings:
     run_as_user:
       rule: "MustRunAs"
+      overwrite: false
       ranges:
         - min: 1000
           max: 2000
@@ -55,7 +56,7 @@ The policy has three settings:
 
 All three settings have no defaults, just like the deprecated PSP (also, they would get used if `mutating` is `true`).
 
-All three settings are JSON objects composed by two attributes: `rule` and `ranges`. The `rule` attribute defines
+All three settings are JSON objects composed by three attributes: `rule`, `ranges` and `overwrite`. The `rule` attribute defines
 the strategy used by the policy to enforce users and groups used in containers. The available strategies are:
 
 * `run_as_user`:
@@ -72,6 +73,9 @@ the strategy used by the policy to enforce users and groups used in containers. 
 	* `RunAsAny` - No default provided. Allows any `supplementalGroups` to be specified
 
 The `ranges` is a list of JSON objects with two attributes: `min` and `max`. Each range object define the user/group ID range used by the rule.
+
+`overwrite` attribute can be set `true` only with the rule `MustRunAs`. This flag configure the policy to mutate the `runAsUser` or `runAsGroup` despite of the value present in the
+request. Even if the value is a valid one. The default value of this attribute is `false`.
 
 ### Examples
 
@@ -184,6 +188,44 @@ To enforce a group when the container has some group defined
         "min": 2001,
         "max": 3000
       }
+    ]
+  }
+}
+```
+
+To enforce that user and groups will be the defined one in the policy configuration,
+set `overwrite` as `true`:
+
+```json
+{
+  "run_as_user": {
+    "rule": "MustRunAs",
+    "overwrite": true,
+    "ranges": [
+      {
+        "min": 1000,
+        "max": 1999
+      }
+    ]
+  },
+  "run_as_group": {
+    "rule": "MustRunAs",
+    "overwrite": true,
+    "ranges": [
+      {
+        "min": 1000,
+        "max": 1999
+      },
+    ]
+  },
+  "supplemental_groups":{
+    "rule": "MustRunAs",
+    "overwrite": true,
+    "ranges": [
+      {
+        "min": 1000,
+        "max": 1999
+      },
     ]
   }
 }
