@@ -91,3 +91,11 @@
 	echo "$output"
 	[ $(expr "$output" : '.*"allowed":true.*') -ne 0 ]
 }
+
+@test "MustRunAs should patch runAsUser, runAsGroup and supplementalGroups when 'overwrite' is true" {
+	run kwctl run  --request-path test_data/e2e/valid_security_context.json --settings-path test_data/e2e/settings_must_run_as_overwrite.json annotated-policy.wasm
+	[ "$status" -eq 0 ]
+	echo "$output"
+	[ $(expr "$output" : '.*"allowed":true.*') -ne 0 ]
+	[ $(expr "$output" : '.*"patchType":"JSONPatch".*') -ne 0 ]
+ }
