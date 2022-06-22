@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 
-extern crate wapc_guest as guest;
 use guest::prelude::*;
+use kubewarden_policy_sdk::wapc_guest as guest;
 
 use anyhow::{anyhow, Result};
 use k8s_openapi::api::core::v1 as apicore;
@@ -199,14 +199,18 @@ fn validate(payload: &[u8]) -> CallResult {
         for init_container in init_containers.iter_mut() {
             match enforce_container_security_policies(init_container, &validation_request) {
                 Ok(mutate_request) => mutated = mutated || mutate_request,
-                Err(error) => return kubewarden::reject_request(Some(error.to_string()), None),
+                Err(error) => {
+                    return kubewarden::reject_request(Some(error.to_string()), None, None, None)
+                }
             }
         }
     }
     for container in pod_spec.containers.iter_mut() {
         match enforce_container_security_policies(container, &validation_request) {
             Ok(mutate_request) => mutated = mutated || mutate_request,
-            Err(error) => return kubewarden::reject_request(Some(error.to_string()), None),
+            Err(error) => {
+                return kubewarden::reject_request(Some(error.to_string()), None, None, None)
+            }
         }
     }
 
@@ -218,7 +222,7 @@ fn validate(payload: &[u8]) -> CallResult {
             }
         }
         Err(msg) => {
-            return kubewarden::reject_request(Some(msg.to_string()), None);
+            return kubewarden::reject_request(Some(msg.to_string()), None, None, None);
         }
     }
 
