@@ -1,0 +1,153 @@
+{
+  "dryRun": false,
+  "kind": {
+    "group": "batch",
+    "kind": "Job",
+    "version": "v1"
+  },
+  "name": "pi",
+  "namespace": "default",
+  "object": {
+    "apiVersion": "batch/v1",
+    "kind": "Job",
+    "metadata": {
+      "annotations": {
+        "batch.kubernetes.io/job-tracking": "",
+        "io.kubewarden.policy.echo.create": "true",
+        "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"batch/v1\",\"kind\":\"Job\",\"metadata\":{\"annotations\":{\"io.kubewarden.policy.echo.create\":\"true\"},\"name\":\"pi\",\"namespace\":\"default\"},\"spec\":{\"backoffLimit\":4,\"template\":{\"spec\":{\"containers\":[{\"command\":[\"perl\",\"-Mbignum=bpi\",\"-wle\",\"print bpi(2000)\"],\"image\":\"perl:5.34.0\",\"name\":\"pi\",\"securityContext\":{\"runAsUser\":0}}],\"restartPolicy\":\"Never\"}}}}\n"
+      },
+      "creationTimestamp": "2022-09-23T14:08:36Z",
+      "generation": 1,
+      "managedFields": [
+        {
+          "apiVersion": "batch/v1",
+          "fieldsType": "FieldsV1",
+          "fieldsV1": {
+            "f:metadata": {
+              "f:annotations": {
+                ".": {},
+                "f:io.kubewarden.policy.echo.create": {},
+                "f:kubectl.kubernetes.io/last-applied-configuration": {}
+              }
+            },
+            "f:spec": {
+              "f:backoffLimit": {},
+              "f:completionMode": {},
+              "f:completions": {},
+              "f:parallelism": {},
+              "f:suspend": {},
+              "f:template": {
+                "f:spec": {
+                  "f:containers": {
+                    "k:{\"name\":\"pi\"}": {
+                      ".": {},
+                      "f:command": {},
+                      "f:image": {},
+                      "f:imagePullPolicy": {},
+                      "f:name": {},
+                      "f:resources": {},
+                      "f:securityContext": {
+                        ".": {},
+                        "f:runAsUser": {}
+                      },
+                      "f:terminationMessagePath": {},
+                      "f:terminationMessagePolicy": {}
+                    }
+                  },
+                  "f:dnsPolicy": {},
+                  "f:restartPolicy": {},
+                  "f:schedulerName": {},
+                  "f:securityContext": {},
+                  "f:terminationGracePeriodSeconds": {}
+                }
+              }
+            }
+          },
+          "manager": "kubectl-client-side-apply",
+          "operation": "Update",
+          "time": "2022-09-23T14:08:36Z"
+        }
+      ],
+      "name": "pi",
+      "namespace": "default",
+      "uid": "e8537353-ee54-45b4-82e8-88f17ab1829a"
+    },
+    "spec": {
+      "backoffLimit": 4,
+      "completionMode": "NonIndexed",
+      "completions": 1,
+      "parallelism": 1,
+      "selector": {
+        "matchLabels": {
+          "controller-uid": "e8537353-ee54-45b4-82e8-88f17ab1829a"
+        }
+      },
+      "suspend": false,
+      "template": {
+        "metadata": {
+          "creationTimestamp": null,
+          "labels": {
+            "controller-uid": "e8537353-ee54-45b4-82e8-88f17ab1829a",
+            "job-name": "pi"
+          }
+        },
+        "spec": {
+          "containers": [
+            {
+              "command": [
+                "perl",
+                "-Mbignum=bpi",
+                "-wle",
+                "print bpi(2000)"
+              ],
+              "image": "perl:5.34.0",
+              "imagePullPolicy": "IfNotPresent",
+              "name": "pi",
+              "resources": {},
+              "securityContext": {
+                "runAsUser": 0
+              },
+              "terminationMessagePath": "/dev/termination-log",
+              "terminationMessagePolicy": "File"
+            }
+          ],
+          "dnsPolicy": "ClusterFirst",
+          "restartPolicy": "Never",
+          "schedulerName": "default-scheduler",
+          "securityContext": {},
+          "terminationGracePeriodSeconds": 30
+        }
+      }
+    },
+    "status": {}
+  },
+  "operation": "CREATE",
+  "options": {
+    "apiVersion": "meta.k8s.io/v1",
+    "fieldManager": "kubectl-client-side-apply",
+    "kind": "CreateOptions"
+  },
+  "requestKind": {
+    "group": "batch",
+    "kind": "Job",
+    "version": "v1"
+  },
+  "requestResource": {
+    "group": "batch",
+    "resource": "jobs",
+    "version": "v1"
+  },
+  "resource": {
+    "group": "batch",
+    "resource": "jobs",
+    "version": "v1"
+  },
+  "uid": "3834715c-44ce-4519-a7f8-932e726018b0",
+  "userInfo": {
+    "groups": [
+      "system:masters",
+      "system:authenticated"
+    ],
+    "username": "system:admin"
+  }
+}

@@ -12,7 +12,7 @@ use kubewarden::{logging, protocol_version_guest, request::ValidationRequest, va
 mod settings;
 use settings::Settings;
 
-use slog::{info, o, Logger};
+use slog::{o, Logger};
 
 lazy_static! {
     static ref LOG_DRAIN: Logger = Logger::root(
@@ -183,54 +183,74 @@ fn enforce_container_security_policies(
 }
 
 fn validate(payload: &[u8]) -> CallResult {
-    info!(LOG_DRAIN, "starting validation");
     let validation_request: ValidationRequest<Settings> = ValidationRequest::new(payload)?;
-    let mut pod: apicore::Pod =
-        serde_json::from_value(validation_request.request.object.clone())
-            .map_err(|e| anyhow!("Error deserializing Pod specification: {:?}", e))?;
-    let mut mutated: bool = false;
-
-    if pod.spec.is_none() {
-        return kubewarden::accept_request();
-    }
-    let mut pod_spec = pod.spec.unwrap();
-
-    if let Some(init_containers) = pod_spec.init_containers.as_mut() {
-        for init_container in init_containers.iter_mut() {
-            match enforce_container_security_policies(init_container, &validation_request) {
-                Ok(mutate_request) => mutated = mutated || mutate_request,
-                Err(error) => {
-                    return kubewarden::reject_request(Some(error.to_string()), None, None, None)
+    match validation_request.extract_pod_spec_from_object() {
+        Ok(pod_spec) => {
+            if let Some(mut pod_spec) = pod_spec {
+                let mut mutated: bool = false;
+                if let Some(init_containers) = pod_spec.init_containers.as_mut() {
+                    for init_container in init_containers.iter_mut() {
+                        match enforce_container_security_policies(
+                            init_container,
+                            &validation_request,
+                        ) {
+                            Ok(mutate_request) => mutated = mutated || mutate_request,
+                            Err(error) => {
+                                return kubewarden::reject_request(
+                                    Some(error.to_string()),
+                                    None,
+                                    None,
+                                    None,
+                                )
+                            }
+                        }
+                    }
                 }
-            }
-        }
-    }
-    for container in pod_spec.containers.iter_mut() {
-        match enforce_container_security_policies(container, &validation_request) {
-            Ok(mutate_request) => mutated = mutated || mutate_request,
-            Err(error) => {
-                return kubewarden::reject_request(Some(error.to_string()), None, None, None)
-            }
-        }
-    }
+                for container in pod_spec.containers.iter_mut() {
+                    match enforce_container_security_policies(container, &validation_request) {
+                        Ok(mutate_request) => mutated = mutated || mutate_request,
+                        Err(error) => {
+                            return kubewarden::reject_request(
+                                Some(error.to_string()),
+                                None,
+                                None,
+                                None,
+                            )
+                        }
+                    }
+                }
 
-    match enforce_supplemental_groups(pod_spec.security_context.clone(), &validation_request) {
-        Ok(mutate_security_context) => {
-            if mutate_security_context.is_some() {
-                mutated = true;
-                pod_spec.security_context = mutate_security_context;
-            }
-        }
-        Err(msg) => {
-            return kubewarden::reject_request(Some(msg.to_string()), None, None, None);
-        }
-    }
+                match enforce_supplemental_groups(
+                    pod_spec.security_context.clone(),
+                    &validation_request,
+                ) {
+                    Ok(mutate_security_context) => {
+                        if mutate_security_context.is_some() {
+                            mutated = true;
+                            pod_spec.security_context = mutate_security_context;
+                        }
+                    }
+                    Err(msg) => {
+                        return kubewarden::reject_request(Some(msg.to_string()), None, None, None);
+                    }
+                }
 
-    pod.spec = Some(pod_spec);
-    if mutated {
-        kubewarden::mutate_request(serde_json::to_value(pod)?)
-    } else {
-        kubewarden::accept_request()
+                if mutated {
+                    return kubewarden::mutate_pod_spec_from_request(validation_request, pod_spec);
+                } else {
+                    return kubewarden::accept_request();
+                }
+            };
+            // If there is not pod spec, just accept it. There is no data to be
+            // validated.
+            kubewarden::accept_request()
+        }
+        Err(_) => kubewarden::reject_request(
+            Some("Cannot parse validation request".to_string()),
+            None,
+            None,
+            None,
+        ),
     }
 }
 
@@ -239,6 +259,7 @@ mod tests {
     use super::*;
 
     use jsonpath_lib as jsonpath;
+    use kubewarden_policy_sdk::response::ValidationResponse;
     use kubewarden_policy_sdk::test::Testcase;
     use settings::{IDRange, RuleStrategy};
 
@@ -574,7 +595,7 @@ mod tests {
         assert_eq!(
             run_as_non_root_json,
             vec![true],
-            "MustRunAsNonRoot should add the 'runAsNonRoot' when no 'runAsUser' is not defined"
+            "MustRunAsNonRoot should add the 'runAsNonRoot' in the containers when no 'runAsUser' is not defined"
         );
         let run_as_non_root_json = jsonpath::select(
             res.mutated_object.as_ref().unwrap(),
@@ -584,7 +605,7 @@ mod tests {
         assert_eq!(
             run_as_non_root_json,
             vec![true],
-            "MustRunAsNonRoot should add the 'runAsNonRoot' when no 'runAsUser' is not defined"
+            "MustRunAsNonRoot should add the 'runAsNonRoot' in the initContainers when no 'runAsUser' is not defined"
         );
         Ok(())
     }
@@ -1434,5 +1455,493 @@ mod tests {
             "Mutated user ID should be the first range's min value"
         );
         Ok(())
+    }
+
+    #[test]
+    fn must_run_as_non_root_should_reject_deployment_with_zero_as_user_id() -> Result<(), ()> {
+        let request_file = "test_data/deployment_root_user.json";
+        let tc = Testcase {
+            name: String::from("MustRunAsNonRoot rule does not allow 0 as user ID"),
+            fixture_file: String::from(request_file),
+            expected_validation_result: false,
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: String::from("MustRunAsNonRoot"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                run_as_group: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+            },
+        };
+        let res = tc.eval(validate).unwrap();
+        assert!(
+            res.mutated_object.is_none(),
+            "Request should not be mutated"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn must_run_as_non_root_should_reject_cronjob_with_zero_as_user_id() -> Result<(), ()> {
+        let request_file = "test_data/cronjob_root_user.json";
+        let tc = Testcase {
+            name: String::from("MustRunAsNonRoot rule does not allow 0 as user ID"),
+            fixture_file: String::from(request_file),
+            expected_validation_result: false,
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: String::from("MustRunAsNonRoot"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                run_as_group: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+            },
+        };
+        let res = tc.eval(validate).unwrap();
+        assert!(
+            res.mutated_object.is_none(),
+            "Request should not be mutated"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn must_run_as_non_root_should_reject_daemonset_with_zero_as_user_id() -> Result<(), ()> {
+        let request_file = "test_data/daemonset_root_user.json";
+        let tc = Testcase {
+            name: String::from("MustRunAsNonRoot rule does not allow 0 as user ID"),
+            fixture_file: String::from(request_file),
+            expected_validation_result: false,
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: String::from("MustRunAsNonRoot"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                run_as_group: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+            },
+        };
+        let res = tc.eval(validate).unwrap();
+        assert!(
+            res.mutated_object.is_none(),
+            "Request should not be mutated"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn must_run_as_non_root_should_reject_job_with_zero_as_user_id() -> Result<(), ()> {
+        let request_file = "test_data/job_root_user.json";
+        let tc = Testcase {
+            name: String::from("MustRunAsNonRoot rule does not allow 0 as user ID"),
+            fixture_file: String::from(request_file),
+            expected_validation_result: false,
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: String::from("MustRunAsNonRoot"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                run_as_group: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+            },
+        };
+        let res = tc.eval(validate).unwrap();
+        assert!(
+            res.mutated_object.is_none(),
+            "Request should not be mutated"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn must_run_as_non_root_should_reject_replicaset_with_zero_as_user_id() -> Result<(), ()> {
+        let request_file = "test_data/replicaset_root_user.json";
+        let tc = Testcase {
+            name: String::from("MustRunAsNonRoot rule does not allow 0 as user ID"),
+            fixture_file: String::from(request_file),
+            expected_validation_result: false,
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: String::from("MustRunAsNonRoot"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                run_as_group: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+            },
+        };
+        let res = tc.eval(validate).unwrap();
+        assert!(
+            res.mutated_object.is_none(),
+            "Request should not be mutated"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn must_run_as_non_root_should_reject_replicationcontroller_with_zero_as_user_id(
+    ) -> Result<(), ()> {
+        let request_file = "test_data/replicationcontroller_root_user.json";
+        let tc = Testcase {
+            name: String::from("MustRunAsNonRoot rule does not allow 0 as user ID"),
+            fixture_file: String::from(request_file),
+            expected_validation_result: false,
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: String::from("MustRunAsNonRoot"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                run_as_group: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+            },
+        };
+        let res = tc.eval(validate).unwrap();
+        assert!(
+            res.mutated_object.is_none(),
+            "Request should not be mutated"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn must_run_as_non_root_should_reject_statefulset_with_zero_as_user_id() -> Result<(), ()> {
+        let request_file = "test_data/statefulset_root_user.json";
+        let tc = Testcase {
+            name: String::from("MustRunAsNonRoot rule does not allow 0 as user ID"),
+            fixture_file: String::from(request_file),
+            expected_validation_result: false,
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: String::from("MustRunAsNonRoot"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                run_as_group: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+            },
+        };
+        let res = tc.eval(validate).unwrap();
+        assert!(
+            res.mutated_object.is_none(),
+            "Request should not be mutated"
+        );
+        Ok(())
+    }
+
+    fn check_if_response_has_mutate_object_and_set_run_as_non_root(
+        test_res: anyhow::Result<ValidationResponse>,
+    ) -> Result<(), ()> {
+        assert!(!test_res.is_err(), "The validate function failed.");
+        let res = test_res.unwrap();
+        assert!(res.mutated_object.is_some(), "Request should be mutated");
+        let run_as_non_root_json = jsonpath::select(
+            res.mutated_object.as_ref().unwrap(),
+            "$.spec.template.spec.containers[*].securityContext.runAsNonRoot",
+        )
+        .unwrap();
+        assert_eq!(
+            run_as_non_root_json,
+            vec![true],
+            "MustRunAsNonRoot should add the 'runAsNonRoot' in the containers when no 'runAsUser' is not defined"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn must_run_as_non_root_should_mutate_deployment_request_when_run_as_user_is_not_defined(
+    ) -> Result<(), ()> {
+        let request_file = "test_data/deployment_with_no_securitycontext.json";
+        let tc = Testcase {
+            name: String::from(
+                "MustRunAsNonRoot should add 'runAsNonRoot' when 'runAsUser' is not defined",
+            ),
+            fixture_file: String::from(request_file),
+            expected_validation_result: true,
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: String::from("MustRunAsNonRoot"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                run_as_group: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+            },
+        };
+        let test_res = tc.eval(validate);
+        check_if_response_has_mutate_object_and_set_run_as_non_root(test_res)
+    }
+
+    #[test]
+    fn must_run_as_non_root_should_mutate_replicaset_request_when_run_as_user_is_not_defined(
+    ) -> Result<(), ()> {
+        let request_file = "test_data/replicaset_with_no_securitycontext.json";
+        let tc = Testcase {
+            name: String::from(
+                "MustRunAsNonRoot should add 'runAsNonRoot' when 'runAsUser' is not defined",
+            ),
+            fixture_file: String::from(request_file),
+            expected_validation_result: true,
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: String::from("MustRunAsNonRoot"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                run_as_group: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+            },
+        };
+        let test_res = tc.eval(validate);
+        check_if_response_has_mutate_object_and_set_run_as_non_root(test_res)
+    }
+
+    #[test]
+    fn must_run_as_non_root_should_mutate_daemonset_request_when_run_as_user_is_not_defined(
+    ) -> Result<(), ()> {
+        let request_file = "test_data/daemonset_with_no_securitycontext.json";
+        let tc = Testcase {
+            name: String::from(
+                "MustRunAsNonRoot should add 'runAsNonRoot' when 'runAsUser' is not defined",
+            ),
+            fixture_file: String::from(request_file),
+            expected_validation_result: true,
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: String::from("MustRunAsNonRoot"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                run_as_group: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+            },
+        };
+        let test_res = tc.eval(validate);
+        check_if_response_has_mutate_object_and_set_run_as_non_root(test_res)
+    }
+
+    #[test]
+    fn must_run_as_non_root_should_mutate_statefulset_request_when_run_as_user_is_not_defined(
+    ) -> Result<(), ()> {
+        let request_file = "test_data/statefulset_with_no_securitycontext.json";
+        let tc = Testcase {
+            name: String::from(
+                "MustRunAsNonRoot should add 'runAsNonRoot' when 'runAsUser' is not defined",
+            ),
+            fixture_file: String::from(request_file),
+            expected_validation_result: true,
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: String::from("MustRunAsNonRoot"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                run_as_group: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+            },
+        };
+        let test_res = tc.eval(validate);
+        check_if_response_has_mutate_object_and_set_run_as_non_root(test_res)
+    }
+
+    #[test]
+    fn must_run_as_non_root_should_mutate_replicationcontroller_request_when_run_as_user_is_not_defined(
+    ) -> Result<(), ()> {
+        let request_file = "test_data/replicationcontroller_with_no_securitycontext.json";
+        let tc = Testcase {
+            name: String::from(
+                "MustRunAsNonRoot should add 'runAsNonRoot' when 'runAsUser' is not defined",
+            ),
+            fixture_file: String::from(request_file),
+            expected_validation_result: true,
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: String::from("MustRunAsNonRoot"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                run_as_group: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+            },
+        };
+        let test_res = tc.eval(validate);
+        check_if_response_has_mutate_object_and_set_run_as_non_root(test_res)
+    }
+
+    #[test]
+    fn must_run_as_non_root_should_mutate_cronjob_request_when_run_as_user_is_not_defined(
+    ) -> Result<(), ()> {
+        let request_file = "test_data/cronjob_with_no_securitycontext.json";
+        let tc = Testcase {
+            name: String::from(
+                "MustRunAsNonRoot should add 'runAsNonRoot' when 'runAsUser' is not defined",
+            ),
+            fixture_file: String::from(request_file),
+            expected_validation_result: true,
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: String::from("MustRunAsNonRoot"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                run_as_group: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+            },
+        };
+        let test_res = tc.eval(validate);
+        assert!(!test_res.is_err(), "The validate function failed.");
+        let res = test_res.unwrap();
+        assert!(res.mutated_object.is_some(), "Request should be mutated");
+        let run_as_non_root_json = jsonpath::select(
+            res.mutated_object.as_ref().unwrap(),
+            "$.spec.jobTemplate.spec.template.spec.containers[*].securityContext.runAsNonRoot",
+        )
+        .unwrap();
+        assert_eq!(
+            run_as_non_root_json,
+            vec![true],
+            "MustRunAsNonRoot should add the 'runAsNonRoot' in the containers when no 'runAsUser' is not defined"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn must_run_as_non_root_should_mutate_job_request_when_run_as_user_is_not_defined(
+    ) -> Result<(), ()> {
+        let request_file = "test_data/job_with_no_securitycontext.json";
+        let tc = Testcase {
+            name: String::from(
+                "MustRunAsNonRoot should add 'runAsNonRoot' when 'runAsUser' is not defined",
+            ),
+            fixture_file: String::from(request_file),
+            expected_validation_result: true,
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: String::from("MustRunAsNonRoot"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                run_as_group: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+            },
+        };
+        let test_res = tc.eval(validate);
+        check_if_response_has_mutate_object_and_set_run_as_non_root(test_res)
     }
 }

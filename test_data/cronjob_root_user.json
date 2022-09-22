@@ -1,0 +1,153 @@
+{
+  "dryRun": false,
+  "kind": {
+    "group": "batch",
+    "kind": "CronJob",
+    "version": "v1"
+  },
+  "name": "hello",
+  "namespace": "default",
+  "object": {
+    "apiVersion": "batch/v1",
+    "kind": "CronJob",
+    "metadata": {
+      "annotations": {
+        "io.kubewarden.policy.echo.create": "true",
+        "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"batch/v1\",\"kind\":\"CronJob\",\"metadata\":{\"annotations\":{\"io.kubewarden.policy.echo.create\":\"true\"},\"name\":\"hello\",\"namespace\":\"default\"},\"spec\":{\"jobTemplate\":{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"command\":[\"/bin/sh\",\"-c\",\"date; echo Hello from the Kubernetes cluster\"],\"image\":\"busybox:1.28\",\"imagePullPolicy\":\"IfNotPresent\",\"name\":\"hello\",\"securityContext\":{\"runAsUser\":0}}],\"restartPolicy\":\"OnFailure\"}}}},\"schedule\":\"* * * * *\"}}\n"
+      },
+      "creationTimestamp": "2022-09-23T14:10:48Z",
+      "generation": 1,
+      "managedFields": [
+        {
+          "apiVersion": "batch/v1",
+          "fieldsType": "FieldsV1",
+          "fieldsV1": {
+            "f:metadata": {
+              "f:annotations": {
+                ".": {},
+                "f:io.kubewarden.policy.echo.create": {},
+                "f:kubectl.kubernetes.io/last-applied-configuration": {}
+              }
+            },
+            "f:spec": {
+              "f:concurrencyPolicy": {},
+              "f:failedJobsHistoryLimit": {},
+              "f:jobTemplate": {
+                "f:spec": {
+                  "f:template": {
+                    "f:spec": {
+                      "f:containers": {
+                        "k:{\"name\":\"hello\"}": {
+                          ".": {},
+                          "f:command": {},
+                          "f:image": {},
+                          "f:imagePullPolicy": {},
+                          "f:name": {},
+                          "f:resources": {},
+                          "f:securityContext": {
+                            ".": {},
+                            "f:runAsUser": {}
+                          },
+                          "f:terminationMessagePath": {},
+                          "f:terminationMessagePolicy": {}
+                        }
+                      },
+                      "f:dnsPolicy": {},
+                      "f:restartPolicy": {},
+                      "f:schedulerName": {},
+                      "f:securityContext": {},
+                      "f:terminationGracePeriodSeconds": {}
+                    }
+                  }
+                }
+              },
+              "f:schedule": {},
+              "f:successfulJobsHistoryLimit": {},
+              "f:suspend": {}
+            }
+          },
+          "manager": "kubectl-client-side-apply",
+          "operation": "Update",
+          "time": "2022-09-23T14:10:48Z"
+        }
+      ],
+      "name": "hello",
+      "namespace": "default",
+      "uid": "a1debdae-4568-4afa-8467-221bda5569d4"
+    },
+    "spec": {
+      "concurrencyPolicy": "Allow",
+      "failedJobsHistoryLimit": 1,
+      "jobTemplate": {
+        "metadata": {
+          "creationTimestamp": null
+        },
+        "spec": {
+          "template": {
+            "metadata": {
+              "creationTimestamp": null
+            },
+            "spec": {
+              "containers": [
+                {
+                  "command": [
+                    "/bin/sh",
+                    "-c",
+                    "date; echo Hello from the Kubernetes cluster"
+                  ],
+                  "image": "busybox:1.28",
+                  "imagePullPolicy": "IfNotPresent",
+                  "name": "hello",
+                  "resources": {},
+                  "securityContext": {
+                    "runAsUser": 0
+                  },
+                  "terminationMessagePath": "/dev/termination-log",
+                  "terminationMessagePolicy": "File"
+                }
+              ],
+              "dnsPolicy": "ClusterFirst",
+              "restartPolicy": "OnFailure",
+              "schedulerName": "default-scheduler",
+              "securityContext": {},
+              "terminationGracePeriodSeconds": 30
+            }
+          }
+        }
+      },
+      "schedule": "* * * * *",
+      "successfulJobsHistoryLimit": 3,
+      "suspend": false
+    },
+    "status": {}
+  },
+  "operation": "CREATE",
+  "options": {
+    "apiVersion": "meta.k8s.io/v1",
+    "fieldManager": "kubectl-client-side-apply",
+    "kind": "CreateOptions"
+  },
+  "requestKind": {
+    "group": "batch",
+    "kind": "CronJob",
+    "version": "v1"
+  },
+  "requestResource": {
+    "group": "batch",
+    "resource": "cronjobs",
+    "version": "v1"
+  },
+  "resource": {
+    "group": "batch",
+    "resource": "cronjobs",
+    "version": "v1"
+  },
+  "uid": "682d570d-ca11-4752-87e8-26617d394119",
+  "userInfo": {
+    "groups": [
+      "system:masters",
+      "system:authenticated"
+    ],
+    "username": "system:admin"
+  }
+}
