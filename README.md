@@ -77,6 +77,30 @@ The `ranges` is a list of JSON objects with two attributes: `min` and `max`. Eac
 `overwrite` attribute can be set `true` only with the rule `MustRunAs`. This flag configure the policy to mutate the `runAsUser` or `runAsGroup` despite of the value present in the
 request. Even if the value is a valid one. The default value of this attribute is `false`.
 
+This policy can inspect Pod resources, but can also operate against "higher order"
+Kuberenetes resource like Deployment, ReplicaSet, DaemonSet, ReplicationController,
+Job and CronJob.
+
+It's up to the operator to decide which kind of resources the policy is going to inspect.
+That is done when declaring the policy.
+
+There are pros and cons to both approaches:
+
+- Have the policy inspect low level resources, like Pod. Different kind of Kubernetes
+  resources (be them native or CRDs) can create Pods. By having the policy target Pod
+  objects, there's the guarantee all the Pods are going to be compliant. However,
+  this could lead to some confusion among end users of the cluster: their high level
+  Kubernetes resources would be successfully created, but they would stay in a non
+  reconciled state. For example, a Deployment creating a non-compliant Pod would be
+  created, but it would never have all its replicas running. The end user would
+  have to do some debugging to finally understand why this is happening.
+- Have the policy inspect higher order resource (e.g. Deployment): the end users
+  will get immediate feedback about the rejections. However, there's still the
+  chance that some non compliant pods are created by another high level resource
+  (be it native to Kubernetes, or a CRD).
+
+
+
 ### Examples
 
 To enforce that user and groups must be set and it should be in the defined ranges:

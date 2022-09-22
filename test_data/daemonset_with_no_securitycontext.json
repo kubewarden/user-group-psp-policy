@@ -1,0 +1,232 @@
+{
+  "dryRun": false,
+  "kind": {
+    "group": "apps",
+    "kind": "DaemonSet",
+    "version": "v1"
+  },
+  "name": "fluentd-elasticsearch",
+  "namespace": "default",
+  "object": {
+    "apiVersion": "apps/v1",
+    "kind": "DaemonSet",
+    "metadata": {
+      "annotations": {
+        "deprecated.daemonset.template.generation": "1",
+        "io.kubewarden.policy.echo.create": "true",
+        "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"apps/v1\",\"kind\":\"DaemonSet\",\"metadata\":{\"annotations\":{\"io.kubewarden.policy.echo.create\":\"true\"},\"labels\":{\"k8s-app\":\"fluentd-logging\"},\"name\":\"fluentd-elasticsearch\",\"namespace\":\"default\"},\"spec\":{\"selector\":{\"matchLabels\":{\"name\":\"fluentd-elasticsearch\"}},\"template\":{\"metadata\":{\"labels\":{\"name\":\"fluentd-elasticsearch\"}},\"spec\":{\"containers\":[{\"image\":\"quay.io/fluentd_elasticsearch/fluentd:v2.5.2\",\"name\":\"fluentd-elasticsearch\",\"resources\":{\"limits\":{\"memory\":\"200Mi\"},\"requests\":{\"cpu\":\"100m\",\"memory\":\"200Mi\"}},\"volumeMounts\":[{\"mountPath\":\"/var/log\",\"name\":\"varlog\"}]}],\"terminationGracePeriodSeconds\":30,\"tolerations\":[{\"effect\":\"NoSchedule\",\"key\":\"node-role.kubernetes.io/control-plane\",\"operator\":\"Exists\"},{\"effect\":\"NoSchedule\",\"key\":\"node-role.kubernetes.io/master\",\"operator\":\"Exists\"}],\"volumes\":[{\"hostPath\":{\"path\":\"/var/log\"},\"name\":\"varlog\"}]}}}}\n"
+      },
+      "creationTimestamp": "2022-09-27T14:03:39Z",
+      "generation": 1,
+      "labels": {
+        "k8s-app": "fluentd-logging"
+      },
+      "managedFields": [
+        {
+          "apiVersion": "apps/v1",
+          "fieldsType": "FieldsV1",
+          "fieldsV1": {
+            "f:metadata": {
+              "f:annotations": {
+                ".": {},
+                "f:deprecated.daemonset.template.generation": {},
+                "f:io.kubewarden.policy.echo.create": {},
+                "f:kubectl.kubernetes.io/last-applied-configuration": {}
+              },
+              "f:labels": {
+                ".": {},
+                "f:k8s-app": {}
+              }
+            },
+            "f:spec": {
+              "f:revisionHistoryLimit": {},
+              "f:selector": {},
+              "f:template": {
+                "f:metadata": {
+                  "f:labels": {
+                    ".": {},
+                    "f:name": {}
+                  }
+                },
+                "f:spec": {
+                  "f:containers": {
+                    "k:{\"name\":\"fluentd-elasticsearch\"}": {
+                      ".": {},
+                      "f:image": {},
+                      "f:imagePullPolicy": {},
+                      "f:name": {},
+                      "f:resources": {
+                        ".": {},
+                        "f:limits": {
+                          ".": {},
+                          "f:memory": {}
+                        },
+                        "f:requests": {
+                          ".": {},
+                          "f:cpu": {},
+                          "f:memory": {}
+                        }
+                      },
+                      "f:terminationMessagePath": {},
+                      "f:terminationMessagePolicy": {},
+                      "f:volumeMounts": {
+                        ".": {},
+                        "k:{\"mountPath\":\"/var/log\"}": {
+                          ".": {},
+                          "f:mountPath": {},
+                          "f:name": {}
+                        }
+                      }
+                    }
+                  },
+                  "f:dnsPolicy": {},
+                  "f:restartPolicy": {},
+                  "f:schedulerName": {},
+                  "f:securityContext": {},
+                  "f:terminationGracePeriodSeconds": {},
+                  "f:tolerations": {},
+                  "f:volumes": {
+                    ".": {},
+                    "k:{\"name\":\"varlog\"}": {
+                      ".": {},
+                      "f:hostPath": {
+                        ".": {},
+                        "f:path": {},
+                        "f:type": {}
+                      },
+                      "f:name": {}
+                    }
+                  }
+                }
+              },
+              "f:updateStrategy": {
+                "f:rollingUpdate": {
+                  ".": {},
+                  "f:maxSurge": {},
+                  "f:maxUnavailable": {}
+                },
+                "f:type": {}
+              }
+            }
+          },
+          "manager": "kubectl-client-side-apply",
+          "operation": "Update",
+          "time": "2022-09-27T14:03:39Z"
+        }
+      ],
+      "name": "fluentd-elasticsearch",
+      "namespace": "default",
+      "uid": "4e805412-86f3-4ec7-a658-cb3deebe96b4"
+    },
+    "spec": {
+      "revisionHistoryLimit": 10,
+      "selector": {
+        "matchLabels": {
+          "name": "fluentd-elasticsearch"
+        }
+      },
+      "template": {
+        "metadata": {
+          "creationTimestamp": null,
+          "labels": {
+            "name": "fluentd-elasticsearch"
+          }
+        },
+        "spec": {
+          "containers": [
+            {
+              "image": "quay.io/fluentd_elasticsearch/fluentd:v2.5.2",
+              "imagePullPolicy": "IfNotPresent",
+              "name": "fluentd-elasticsearch",
+              "resources": {
+                "limits": {
+                  "memory": "200Mi"
+                },
+                "requests": {
+                  "cpu": "100m",
+                  "memory": "200Mi"
+                }
+              },
+              "terminationMessagePath": "/dev/termination-log",
+              "terminationMessagePolicy": "File",
+              "volumeMounts": [
+                {
+                  "mountPath": "/var/log",
+                  "name": "varlog"
+                }
+              ]
+            }
+          ],
+          "dnsPolicy": "ClusterFirst",
+          "restartPolicy": "Always",
+          "schedulerName": "default-scheduler",
+          "securityContext": {},
+          "terminationGracePeriodSeconds": 30,
+          "tolerations": [
+            {
+              "effect": "NoSchedule",
+              "key": "node-role.kubernetes.io/control-plane",
+              "operator": "Exists"
+            },
+            {
+              "effect": "NoSchedule",
+              "key": "node-role.kubernetes.io/master",
+              "operator": "Exists"
+            }
+          ],
+          "volumes": [
+            {
+              "hostPath": {
+                "path": "/var/log",
+                "type": ""
+              },
+              "name": "varlog"
+            }
+          ]
+        }
+      },
+      "updateStrategy": {
+        "rollingUpdate": {
+          "maxSurge": 0,
+          "maxUnavailable": 1
+        },
+        "type": "RollingUpdate"
+      }
+    },
+    "status": {
+      "currentNumberScheduled": 0,
+      "desiredNumberScheduled": 0,
+      "numberMisscheduled": 0,
+      "numberReady": 0
+    }
+  },
+  "operation": "CREATE",
+  "options": {
+    "apiVersion": "meta.k8s.io/v1",
+    "fieldManager": "kubectl-client-side-apply",
+    "kind": "CreateOptions"
+  },
+  "requestKind": {
+    "group": "apps",
+    "kind": "DaemonSet",
+    "version": "v1"
+  },
+  "requestResource": {
+    "group": "apps",
+    "resource": "daemonsets",
+    "version": "v1"
+  },
+  "resource": {
+    "group": "apps",
+    "resource": "daemonsets",
+    "version": "v1"
+  },
+  "uid": "4fa7dec8-6047-4b72-a5a0-726b8344afd3",
+  "userInfo": {
+    "groups": [
+      "system:masters",
+      "system:authenticated"
+    ],
+    "username": "system:admin"
+  }
+}

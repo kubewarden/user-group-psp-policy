@@ -1,0 +1,146 @@
+{
+  "dryRun": false,
+  "kind": {
+    "group": "batch",
+    "kind": "Job",
+    "version": "v1"
+  },
+  "name": "pi",
+  "namespace": "default",
+  "object": {
+    "apiVersion": "batch/v1",
+    "kind": "Job",
+    "metadata": {
+      "annotations": {
+        "batch.kubernetes.io/job-tracking": "",
+        "io.kubewarden.policy.echo.create": "true",
+        "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"batch/v1\",\"kind\":\"Job\",\"metadata\":{\"annotations\":{\"io.kubewarden.policy.echo.create\":\"true\"},\"name\":\"pi\",\"namespace\":\"default\"},\"spec\":{\"backoffLimit\":4,\"template\":{\"spec\":{\"containers\":[{\"command\":[\"perl\",\"-Mbignum=bpi\",\"-wle\",\"print bpi(2000)\"],\"image\":\"perl:5.34.0\",\"name\":\"pi\"}],\"restartPolicy\":\"Never\"}}}}\n"
+      },
+      "creationTimestamp": "2022-09-27T14:33:03Z",
+      "generation": 1,
+      "managedFields": [
+        {
+          "apiVersion": "batch/v1",
+          "fieldsType": "FieldsV1",
+          "fieldsV1": {
+            "f:metadata": {
+              "f:annotations": {
+                ".": {},
+                "f:io.kubewarden.policy.echo.create": {},
+                "f:kubectl.kubernetes.io/last-applied-configuration": {}
+              }
+            },
+            "f:spec": {
+              "f:backoffLimit": {},
+              "f:completionMode": {},
+              "f:completions": {},
+              "f:parallelism": {},
+              "f:suspend": {},
+              "f:template": {
+                "f:spec": {
+                  "f:containers": {
+                    "k:{\"name\":\"pi\"}": {
+                      ".": {},
+                      "f:command": {},
+                      "f:image": {},
+                      "f:imagePullPolicy": {},
+                      "f:name": {},
+                      "f:resources": {},
+                      "f:terminationMessagePath": {},
+                      "f:terminationMessagePolicy": {}
+                    }
+                  },
+                  "f:dnsPolicy": {},
+                  "f:restartPolicy": {},
+                  "f:schedulerName": {},
+                  "f:securityContext": {},
+                  "f:terminationGracePeriodSeconds": {}
+                }
+              }
+            }
+          },
+          "manager": "kubectl-client-side-apply",
+          "operation": "Update",
+          "time": "2022-09-27T14:33:03Z"
+        }
+      ],
+      "name": "pi",
+      "namespace": "default",
+      "uid": "fb1c2055-416a-4632-87d2-45bfd8239580"
+    },
+    "spec": {
+      "backoffLimit": 4,
+      "completionMode": "NonIndexed",
+      "completions": 1,
+      "parallelism": 1,
+      "selector": {
+        "matchLabels": {
+          "controller-uid": "fb1c2055-416a-4632-87d2-45bfd8239580"
+        }
+      },
+      "suspend": false,
+      "template": {
+        "metadata": {
+          "creationTimestamp": null,
+          "labels": {
+            "controller-uid": "fb1c2055-416a-4632-87d2-45bfd8239580",
+            "job-name": "pi"
+          }
+        },
+        "spec": {
+          "containers": [
+            {
+              "command": [
+                "perl",
+                "-Mbignum=bpi",
+                "-wle",
+                "print bpi(2000)"
+              ],
+              "image": "perl:5.34.0",
+              "imagePullPolicy": "IfNotPresent",
+              "name": "pi",
+              "resources": {},
+              "terminationMessagePath": "/dev/termination-log",
+              "terminationMessagePolicy": "File"
+            }
+          ],
+          "dnsPolicy": "ClusterFirst",
+          "restartPolicy": "Never",
+          "schedulerName": "default-scheduler",
+          "securityContext": {},
+          "terminationGracePeriodSeconds": 30
+        }
+      }
+    },
+    "status": {}
+  },
+  "operation": "CREATE",
+  "options": {
+    "apiVersion": "meta.k8s.io/v1",
+    "fieldManager": "kubectl-client-side-apply",
+    "kind": "CreateOptions"
+  },
+  "requestKind": {
+    "group": "batch",
+    "kind": "Job",
+    "version": "v1"
+  },
+  "requestResource": {
+    "group": "batch",
+    "resource": "jobs",
+    "version": "v1"
+  },
+  "resource": {
+    "group": "batch",
+    "resource": "jobs",
+    "version": "v1"
+  },
+  "uid": "175b9922-9fdd-407c-b53c-b7c291826b28",
+  "userInfo": {
+    "groups": [
+      "system:masters",
+      "system:authenticated"
+    ],
+    "username": "system:admin"
+  }
+}
