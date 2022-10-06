@@ -31,40 +31,104 @@ pub extern "C" fn wapc_init() {
     register_function("protocol_version", protocol_version_guest);
 }
 
-fn enforce_run_as_user_rule(
-    security_context_option: Option<apicore::SecurityContext>,
+trait GenericSecurityContext {
+    fn run_as_user(&self) -> Option<i64>;
+    fn set_run_as_user(&mut self, run_as_user: Option<i64>);
+    fn run_as_non_root(&self) -> Option<bool>;
+    fn set_run_as_non_root(&mut self, run_as_non_root: Option<bool>);
+    fn run_as_group(&self) -> Option<i64>;
+    fn set_run_as_group(&mut self, run_as_group: Option<i64>);
+}
+
+impl GenericSecurityContext for apicore::SecurityContext {
+    fn run_as_user(&self) -> Option<i64> {
+        self.run_as_user
+    }
+
+    fn set_run_as_user(&mut self, run_as_user: Option<i64>) {
+        self.run_as_user = run_as_user;
+    }
+
+    fn run_as_group(&self) -> Option<i64> {
+        self.run_as_group
+    }
+
+    fn set_run_as_group(&mut self, run_as_group: Option<i64>) {
+        self.run_as_group = run_as_group;
+    }
+
+    fn run_as_non_root(&self) -> Option<bool> {
+        self.run_as_non_root
+    }
+
+    fn set_run_as_non_root(&mut self, run_as_non_root: Option<bool>) {
+        self.run_as_non_root = run_as_non_root;
+    }
+}
+
+impl GenericSecurityContext for apicore::PodSecurityContext {
+    fn run_as_user(&self) -> Option<i64> {
+        self.run_as_user
+    }
+
+    fn set_run_as_user(&mut self, run_as_user: Option<i64>) {
+        self.run_as_user = run_as_user;
+    }
+
+    fn run_as_group(&self) -> Option<i64> {
+        self.run_as_group
+    }
+
+    fn set_run_as_group(&mut self, run_as_group: Option<i64>) {
+        self.run_as_group = run_as_group;
+    }
+
+    fn run_as_non_root(&self) -> Option<bool> {
+        self.run_as_non_root
+    }
+
+    fn set_run_as_non_root(&mut self, run_as_non_root: Option<bool>) {
+        self.run_as_non_root = run_as_non_root;
+    }
+}
+
+fn enforce_run_as_user_rule<T>(
+    security_context_option: Option<T>,
     validation_request: &ValidationRequest<Settings>,
-) -> Result<Option<apicore::SecurityContext>> {
+) -> Result<Option<T>>
+where
+    T: GenericSecurityContext + std::default::Default,
+{
     let mut security_context = security_context_option.unwrap_or_default();
     match validation_request.settings.run_as_user.rule.as_str() {
         MUST_RUN_AS => {
             if validation_request.settings.run_as_user.overwrite
-                || security_context.run_as_user.is_none()
+                || security_context.run_as_user().is_none()
             {
                 let default_user_id = validation_request.settings.run_as_user.ranges[0].min;
-                security_context.run_as_user = Some(default_user_id);
+                security_context.set_run_as_user(Some(default_user_id));
                 return Ok(Some(security_context));
             }
-            if let Some(user_id) = security_context.run_as_user {
+            if let Some(user_id) = security_context.run_as_user() {
                 if !validation_request.settings.run_as_user.is_valid_id(user_id) {
                     return Err(anyhow!("User ID outside defined ranges"));
                 }
             }
         }
         MUST_RUN_AS_NON_ROOT => {
-            if let Some(run_as_non_root) = security_context.run_as_non_root {
+            if let Some(run_as_non_root) = security_context.run_as_non_root() {
                 if !run_as_non_root {
                     return Err(anyhow!("RunAsNonRoot should be set to true"));
                 }
             }
-            if let Some(user_id) = security_context.run_as_user {
+            if let Some(user_id) = security_context.run_as_user() {
                 if user_id == 0 {
                     return Err(anyhow!(
                         "Invalid user ID: cannot run container with root ID (0)"
                     ));
                 }
             }
-            security_context.run_as_non_root = Some(true);
+            security_context.set_run_as_non_root(Some(true));
             return Ok(Some(security_context));
         }
         &_ => {}
@@ -72,21 +136,24 @@ fn enforce_run_as_user_rule(
     Ok(None)
 }
 
-fn enforce_run_as_group(
-    security_context_option: Option<apicore::SecurityContext>,
+fn enforce_run_as_group<T>(
+    security_context_option: Option<T>,
     validation_request: &ValidationRequest<Settings>,
-) -> Result<Option<apicore::SecurityContext>> {
+) -> Result<Option<T>>
+where
+    T: GenericSecurityContext + std::default::Default,
+{
     let mut security_context = security_context_option.unwrap_or_default();
     match validation_request.settings.run_as_group.rule.as_str() {
         MUST_RUN_AS => {
             if validation_request.settings.run_as_group.overwrite
-                || security_context.run_as_group.is_none()
+                || security_context.run_as_group().is_none()
             {
                 let default_group_id = validation_request.settings.run_as_group.ranges[0].min;
-                security_context.run_as_group = Some(default_group_id);
+                security_context.set_run_as_group(Some(default_group_id));
                 return Ok(Some(security_context));
             }
-            if let Some(group_id) = security_context.run_as_group {
+            if let Some(group_id) = security_context.run_as_group() {
                 if !validation_request
                     .settings
                     .run_as_group
@@ -97,7 +164,7 @@ fn enforce_run_as_group(
             }
         }
         MAY_RUN_AS => {
-            if let Some(group_id) = security_context.run_as_group {
+            if let Some(group_id) = security_context.run_as_group() {
                 if !validation_request
                     .settings
                     .run_as_group
@@ -182,6 +249,26 @@ fn enforce_container_security_policies(
     Ok(mutated)
 }
 
+fn enforce_pod_spec_security_policies(
+    podspec: &mut apicore::PodSpec,
+    validation_request: &ValidationRequest<Settings>,
+) -> Result<bool> {
+    let mut mutated: bool = false;
+    let mutate_request =
+        enforce_run_as_user_rule(podspec.security_context.clone(), validation_request)?;
+    if mutate_request.is_some() {
+        mutated = true;
+        podspec.security_context = mutate_request;
+    }
+    let mutate_request =
+        enforce_run_as_group(podspec.security_context.clone(), validation_request)?;
+    if mutate_request.is_some() {
+        mutated = true;
+        podspec.security_context = mutate_request;
+    }
+    Ok(mutated)
+}
+
 fn validate(payload: &[u8]) -> CallResult {
     let validation_request: ValidationRequest<Settings> = ValidationRequest::new(payload)?;
     match validation_request.extract_pod_spec_from_object() {
@@ -217,6 +304,18 @@ fn validate(payload: &[u8]) -> CallResult {
                                 None,
                             )
                         }
+                    }
+                }
+
+                match enforce_pod_spec_security_policies(&mut pod_spec, &validation_request) {
+                    Ok(mutate_request) => mutated = mutated || mutate_request,
+                    Err(error) => {
+                        return kubewarden::reject_request(
+                            Some(error.to_string()),
+                            None,
+                            None,
+                            None,
+                        )
                     }
                 }
 
@@ -261,6 +360,7 @@ mod tests {
     use jsonpath_lib as jsonpath;
     use kubewarden_policy_sdk::response::ValidationResponse;
     use kubewarden_policy_sdk::test::Testcase;
+    use settings::Settings;
     use settings::{IDRange, RuleStrategy};
 
     #[test]
@@ -1943,5 +2043,105 @@ mod tests {
         };
         let test_res = tc.eval(validate);
         check_if_response_has_mutate_object_and_set_run_as_non_root(test_res)
+    }
+
+    #[test]
+    fn must_run_as_should_mutate_deployment_with_podspec_securitycontext_without_values(
+    ) -> Result<(), ()> {
+        let request_file = "test_data/deployment_with_no_securitycontext.json";
+        let tc = Testcase {
+            name: String::from("MustRunAs should mutate object when invalid values are set"),
+            fixture_file: String::from(request_file),
+            expected_validation_result: true,
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: String::from("MustRunAs"),
+                    ranges: vec![IDRange {
+                        min: 1500,
+                        max: 2000,
+                    }],
+                    ..Default::default()
+                },
+                run_as_group: RuleStrategy {
+                    rule: String::from("MustRunAs"),
+                    ranges: vec![IDRange {
+                        min: 2000,
+                        max: 2500,
+                    }],
+                    ..Default::default()
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+            },
+        };
+
+        let res = tc.eval(validate).unwrap();
+        assert!(res.mutated_object.is_some(), "Request should be mutated");
+        let user_id_json = jsonpath::select(
+            res.mutated_object.as_ref().unwrap(),
+            "$.spec.template.spec.securityContext.runAsUser",
+        )
+        .unwrap();
+        assert_eq!(
+            user_id_json,
+            vec![1500],
+            "MustRunAs should mutate object when invalid user ID is set"
+        );
+
+        let group_id_json = jsonpath::select(
+            res.mutated_object.as_ref().unwrap(),
+            "$.spec.template.spec.securityContext.runAsGroup",
+        )
+        .unwrap();
+        assert_eq!(
+            group_id_json,
+            vec![2000],
+            "MustRunAs should mutate object when invalid group ID is set"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn must_run_as_should_reject_deployment_with_podspec_securitycontext_with_invalid_values(
+    ) -> Result<(), ()> {
+        let request_file = "test_data/deployment_with_user.json";
+        let tc = Testcase {
+            name: String::from("MustRunAs should mutate object when invalid values are set"),
+            fixture_file: String::from(request_file),
+            expected_validation_result: false,
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: String::from("MustRunAs"),
+                    ranges: vec![IDRange {
+                        min: 1500,
+                        max: 2000,
+                    }],
+                    ..Default::default()
+                },
+                run_as_group: RuleStrategy {
+                    rule: String::from("MustRunAs"),
+                    ranges: vec![IDRange {
+                        min: 2000,
+                        max: 2500,
+                    }],
+                    ..Default::default()
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: String::from("RunAsAny"),
+                    ranges: vec![],
+                    ..Default::default()
+                },
+            },
+        };
+
+        let res = tc.eval(validate).unwrap();
+        assert!(
+            res.mutated_object.is_none(),
+            "MustRunAs should not mutate request when user ID is invalid"
+        );
+        Ok(())
     }
 }
