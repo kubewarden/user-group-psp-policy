@@ -50,8 +50,8 @@ You can see more information about the setting in the following section.
 
 The policy has three settings:
 
-* `run_as_user`: Controls which user ID the containers are run with.
-* `run_as_group`:  Controls which primary group ID the containers are run with.
+* `run_as_user`: Controls which user ID the containers are run with. As well as the user in the securityContext from PodSpec.
+* `run_as_group`:  Controls which primary group ID the containers are run with. As well as the group in the securityContext from PodSpec.
 * `supplemental_groups`: Controls which group IDs containers add.
 
 All three settings have no defaults, just like the deprecated PSP (also, they would get used if `mutating` is `true`).

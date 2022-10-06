@@ -9,6 +9,9 @@
       "name": "nginx"
     },
     "spec": {
+      "securityContext": {
+        "runAsGroup": 1500
+      },
       "initContainers": [
         {
           "image": "nginx",

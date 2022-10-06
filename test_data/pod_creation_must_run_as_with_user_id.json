@@ -9,6 +9,9 @@
       "name": "nginx"
     },
     "spec": {
+      "securityContext": {
+        "runAsUser": 1500
+      },
       "containers": [
         {
           "image": "nginx",
