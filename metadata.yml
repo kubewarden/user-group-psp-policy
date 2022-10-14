@@ -8,7 +8,7 @@ contextAware: false
 executionMode: kubewarden-wapc
 annotations:
   io.kubewarden.policy.title: psp-user-group
-  io.kubewarden.policy.description: Short description
+  io.kubewarden.policy.description: Kubewarden Policy that controls containers user and groups
   io.kubewarden.policy.author: José Guilherme Vanz <jguilhermevanz@suse.com>
   io.kubewarden.policy.url: https://github.com/kubewarden/user-group-psp-policy
   io.kubewarden.policy.source: https://github.com/kubewarden/user-group-psp-policy
