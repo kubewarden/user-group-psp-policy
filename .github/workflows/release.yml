@@ -26,5 +26,4 @@ jobs:
     with:
       input-wasm: user_group_psp
       oci-target: ghcr.io/${{ github.repository_owner }}/policies/user-group-psp
-    secrets:
-      workflow-pat: ${{ secrets.WORKFLOW_PAT }}
+
