@@ -27,6 +27,12 @@ annotations:
   kubewarden/resources: Pod
   kubewarden/mutation: true
   kubewarden/contextAware: false
+  kubewarden/rules: |
+    rules:
+    - apiGroups: [""]
+      apiVersions: ["v1"]
+      resources: ["deployment","replicaset","statefulset","daemonset","replicationcontroller","job","cronjob","pod"]
+      operations: ["CREATE"]
   kubewarden/questions-ui: |
     questions:
     - default: null
