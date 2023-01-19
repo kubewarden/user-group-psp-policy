@@ -5,46 +5,6 @@ Policy that controls containers [user and groups](https://kubernetes.io/docs/con
 
 This policy is used to control users and groups in containers.
 
-## Installation
-
-Once you have Kuberwarden installed in you Kubernetes cluster, you can install
-the policy with the following command:
-
-```bash
-kubectl apply -f - <<EOF
-apiVersion: policies.kubewarden.io/v1alpha2
-kind: ClusterAdmissionPolicy
-metadata:
-  name: user-group-psp
-spec:
-  policyServer: default
-  module: registry://ghcr.io/kubewarden/policies/user-group-psp:latest
-  rules:
-  - apiGroups: [""]
-    apiVersions: ["v1"]
-    resources: ["pods"]
-    operations:
-    - CREATE
-    - UPDATE
-  mutating: true
-  settings:
-    run_as_user:
-      rule: "MustRunAs"
-      overwrite: false
-      ranges:
-        - min: 1000
-          max: 2000
-        - min: 4000
-          max: 5000
-    run_as_group:
-      rule: "RunAsAny"
-    supplemental_groups:
-      rule: "RunAsAny"
-EOF
-```
-
-You can see more information about the setting in the following section.
-
 ## Settings
 
 
@@ -253,23 +213,4 @@ set `overwrite` as `true`:
     ]
   }
 }
-```
-
-
-## License
-
-```
-Copyright (C) 2021 José Guilherme Vanz <jguilhermevanz@suse.com>
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-   http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 ```
