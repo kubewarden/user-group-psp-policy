@@ -1,8 +1,8 @@
 ---
-version: 0.4.0
+version: 0.4.1
 name: user-group-psp
 displayName: User Group PSP
-createdAt: '2023-01-19T16:27:15+02:00'
+createdAt: '2023-01-19T13:27:15+02:00'
 description: A Pod Security Policy that controls the container user and groups
 license: Apache-2.0
 homeURL: https://github.com/kubewarden/user-group-psp-policy
