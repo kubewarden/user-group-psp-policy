@@ -5,46 +5,6 @@ Policy that controls containers [user and groups](https://kubernetes.io/docs/con
 
 This policy is used to control users and groups in containers.
 
-## Installation
-
-Once you have Kuberwarden installed in you Kubernetes cluster, you can install
-the policy with the following command:
-
-```bash
-kubectl apply -f - <<EOF
-apiVersion: policies.kubewarden.io/v1alpha2
-kind: ClusterAdmissionPolicy
-metadata:
-  name: user-group-psp
-spec:
-  policyServer: default
-  module: registry://ghcr.io/kubewarden/policies/user-group-psp:latest
-  rules:
-  - apiGroups: [""]
-    apiVersions: ["v1"]
-    resources: ["pods"]
-    operations:
-    - CREATE
-    - UPDATE
-  mutating: true
-  settings:
-    run_as_user:
-      rule: "MustRunAs"
-      overwrite: false
-      ranges:
-        - min: 1000
-          max: 2000
-        - min: 4000
-          max: 5000
-    run_as_group:
-      rule: "RunAsAny"
-    supplemental_groups:
-      rule: "RunAsAny"
-EOF
-```
-
-You can see more information about the setting in the following section.
-
 ## Settings
 
 
