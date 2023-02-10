@@ -49,23 +49,23 @@ questions:
       label: Ranges
       show_if: run_as_user.rule=MustRunAs||run_as_user.rule=MustRunAsNonRoot
       hide_input: true
-      type: map[
+      type: sequence[
       variable: run_as_user.ranges
-      subquestions:
+      sequence_questions:
         - default: 0
           group: Settings
           label: min
           show_if: run_as_user.rule=MustRunAs||run_as_user.rule=MustRunAsNonRoot
           tooltip: Minimum UID or GID
           type: int
-          variable: run_as_user.ranges.min
+          variable: min
         - default: 0
           group: Settings
           label: max
           show_if: run_as_user.rule=MustRunAs||run_as_user.rule=MustRunAsNonRoot
           tooltip: Maxium UID or GID
           type: int
-          variable: run_as_user.ranges.max
+          variable: max
 - default: []
   description: Controls which primary group ID the containers are run with.
   group: Settings
@@ -100,23 +100,23 @@ questions:
       label: Ranges
       show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MustRunAsNonRoot
       hide_input: true
-      type: map[
+      type: sequence[
       variable: run_as_group.ranges
-      subquestions:
+      sequence_questions:
         - default: 0
           group: Settings
           label: min
           show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MustRunAsNonRoot
           tooltip: Minimum UID or GID
           type: int
-          variable: run_as_group.ranges.min
+          variable: min
         - default: 0
           group: Settings
           label: max
           show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MustRunAsNonRoot
           tooltip: Maxium UID or GID
           type: int
-          variable: run_as_group.ranges.max
+          variable: max
 - default: []
   description: Controls which group IDs containers add.
   group: Settings
@@ -153,9 +153,9 @@ questions:
       show_if: >-
         supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MustRunAsNonRoot
       hide_input: true
-      type: map[
+      type: sequence[
       variable: supplemental_groups.ranges
-      subquestions:
+      sequence_questions:
         - default: 0
           group: Settings
           label: min
@@ -163,7 +163,7 @@ questions:
             supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MustRunAsNonRoot
           tooltip: Minimum UID or GID
           type: int
-          variable: supplemental_groups.ranges.min
+          variable: min
         - default: 0
           group: Settings
           label: max
@@ -171,4 +171,4 @@ questions:
             supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MustRunAsNonRoot
           tooltip: Maxium UID or GID
           type: int
-          variable: supplemental_groups.ranges.max
+          variable: max
