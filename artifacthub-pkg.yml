@@ -1,14 +1,14 @@
 ---
-version: 0.4.3
+version: 0.4.4
 name: user-group-psp
 displayName: User Group PSP
-createdAt: '2023-02-13T15:54:18+00:00'
+createdAt: '2023-03-16T13:53:06+00:00'
 description: A Pod Security Policy that controls the container user and groups
 license: Apache-2.0
 homeURL: https://github.com/kubewarden/user-group-psp-policy
 containersImages:
 - name: policy
-  image: ghcr.io/kubewarden/policies/user-group-psp:v0.4.3
+  image: ghcr.io/kubewarden/policies/user-group-psp:v0.4.4
 keywords:
 - psp
 - container
@@ -16,7 +16,7 @@ keywords:
 - group
 links:
 - name: policy
-  url: https://github.com/kubewarden/user-group-psp-policy/releases/download/v0.4.3/policy.wasm
+  url: https://github.com/kubewarden/user-group-psp-policy/releases/download/v0.4.4/policy.wasm
 - name: source
   url: https://github.com/kubewarden/user-group-psp-policy
 provider:
@@ -80,7 +80,7 @@ annotations:
         - default: false
           group: Settings
           label: Overwrite
-          show_if: run_as_user.rule=MustRunAs||run_as_user.rule=MustRunAsNonRoot
+          show_if: run_as_user.rule=MustRunAs
           title: Overwrite
           tooltip: >-
             The overwrite attribute can be set only with the MustRunAs rule. This
@@ -130,14 +130,14 @@ annotations:
           label: Rule
           options:
             - MustRunAs
-            - MustRunAsNonRoot
+            - MayRunAs
             - RunAsAny
           type: enum
           variable: run_as_group.rule
         - default: false
           group: Settings
           label: Overwrite
-          show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MustRunAsNonRoot
+          show_if: run_as_group.rule=MustRunAs
           type: boolean
           variable: run_as_group.overwrite
         - default: []
@@ -146,7 +146,7 @@ annotations:
             range object define the user/group ID range used by the rule.
           group: Settings
           label: Ranges
-          show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MustRunAsNonRoot
+          show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MayRunAs
           hide_input: true
           type: sequence[
           variable: run_as_group.ranges
@@ -154,14 +154,14 @@ annotations:
             - default: 0
               group: Settings
               label: min
-              show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MustRunAsNonRoot
+              show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MayRunAs
               tooltip: Minimum UID or GID
               type: int
               variable: min
             - default: 0
               group: Settings
               label: max
-              show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MustRunAsNonRoot
+              show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MayRunAs
               tooltip: Maxium UID or GID
               type: int
               variable: max
@@ -181,7 +181,7 @@ annotations:
           label: Rule
           options:
             - MustRunAs
-            - MustRunAsNonRoot
+            - MayRunAs
             - RunAsAny
           type: enum
           variable: supplemental_groups.rule
@@ -189,7 +189,7 @@ annotations:
           group: Settings
           label: Overwrite
           show_if: >-
-            supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MustRunAsNonRoot
+            supplemental_groups.rule=MustRunAs
           type: boolean
           variable: supplemental_groups.overwrite
         - default: []
@@ -199,7 +199,7 @@ annotations:
           group: Settings
           label: Ranges
           show_if: >-
-            supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MustRunAsNonRoot
+            supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MayRunAs
           hide_input: true
           type: sequence[
           variable: supplemental_groups.ranges
@@ -208,7 +208,7 @@ annotations:
               group: Settings
               label: min
               show_if: >-
-                supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MustRunAsNonRoot
+                supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MayRunAs
               tooltip: Minimum UID or GID
               type: int
               variable: min
@@ -216,7 +216,7 @@ annotations:
               group: Settings
               label: max
               show_if: >-
-                supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MustRunAsNonRoot
+                supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MayRunAs
               tooltip: Maxium UID or GID
               type: int
               variable: max
