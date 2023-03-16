@@ -32,7 +32,7 @@ questions:
     - default: false
       group: Settings
       label: Overwrite
-      show_if: run_as_user.rule=MustRunAs||run_as_user.rule=MustRunAsNonRoot
+      show_if: run_as_user.rule=MustRunAs
       title: Overwrite
       tooltip: >-
         The overwrite attribute can be set only with the MustRunAs rule. This
@@ -82,14 +82,14 @@ questions:
       label: Rule
       options:
         - MustRunAs
-        - MustRunAsNonRoot
+        - MayRunAs
         - RunAsAny
       type: enum
       variable: run_as_group.rule
     - default: false
       group: Settings
       label: Overwrite
-      show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MustRunAsNonRoot
+      show_if: run_as_group.rule=MustRunAs
       type: boolean
       variable: run_as_group.overwrite
     - default: []
@@ -98,7 +98,7 @@ questions:
         range object define the user/group ID range used by the rule.
       group: Settings
       label: Ranges
-      show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MustRunAsNonRoot
+      show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MayRunAs
       hide_input: true
       type: sequence[
       variable: run_as_group.ranges
@@ -106,14 +106,14 @@ questions:
         - default: 0
           group: Settings
           label: min
-          show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MustRunAsNonRoot
+          show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MayRunAs
           tooltip: Minimum UID or GID
           type: int
           variable: min
         - default: 0
           group: Settings
           label: max
-          show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MustRunAsNonRoot
+          show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MayRunAs
           tooltip: Maxium UID or GID
           type: int
           variable: max
@@ -133,7 +133,7 @@ questions:
       label: Rule
       options:
         - MustRunAs
-        - MustRunAsNonRoot
+        - MayRunAs
         - RunAsAny
       type: enum
       variable: supplemental_groups.rule
@@ -141,7 +141,7 @@ questions:
       group: Settings
       label: Overwrite
       show_if: >-
-        supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MustRunAsNonRoot
+        supplemental_groups.rule=MustRunAs
       type: boolean
       variable: supplemental_groups.overwrite
     - default: []
@@ -151,7 +151,7 @@ questions:
       group: Settings
       label: Ranges
       show_if: >-
-        supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MustRunAsNonRoot
+        supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MayRunAs
       hide_input: true
       type: sequence[
       variable: supplemental_groups.ranges
@@ -160,7 +160,7 @@ questions:
           group: Settings
           label: min
           show_if: >-
-            supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MustRunAsNonRoot
+            supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MayRunAs
           tooltip: Minimum UID or GID
           type: int
           variable: min
@@ -168,7 +168,7 @@ questions:
           group: Settings
           label: max
           show_if: >-
-            supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MustRunAsNonRoot
+            supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MayRunAs
           tooltip: Maxium UID or GID
           type: int
           variable: max
