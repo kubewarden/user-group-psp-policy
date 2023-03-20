@@ -9,7 +9,7 @@ questions:
   hide_input: true
   type: string
   variable: description
-- default: []
+- default: {}
   description: Controls which user ID the containers are run with.
   group: Settings
   label: Run as user
@@ -66,7 +66,7 @@ questions:
           tooltip: Maxium UID or GID
           type: int
           variable: max
-- default: []
+- default: {}
   description: Controls which primary group ID the containers are run with.
   group: Settings
   label: Run as group
@@ -117,7 +117,7 @@ questions:
           tooltip: Maxium UID or GID
           type: int
           variable: max
-- default: []
+- default: {}
   description: Controls which group IDs containers add.
   group: Settings
   label: Supplemental groups
