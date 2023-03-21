@@ -1,14 +1,14 @@
 ---
-version: 0.4.4
+version: 0.4.5
 name: user-group-psp
 displayName: User Group PSP
-createdAt: '2023-03-16T13:53:06+00:00'
+createdAt: '2023-03-20T20:18:33+00:00'
 description: A Pod Security Policy that controls the container user and groups
 license: Apache-2.0
 homeURL: https://github.com/kubewarden/user-group-psp-policy
 containersImages:
 - name: policy
-  image: ghcr.io/kubewarden/policies/user-group-psp:v0.4.4
+  image: ghcr.io/kubewarden/policies/user-group-psp:v0.4.5
 keywords:
 - psp
 - container
@@ -16,7 +16,7 @@ keywords:
 - group
 links:
 - name: policy
-  url: https://github.com/kubewarden/user-group-psp-policy/releases/download/v0.4.4/policy.wasm
+  url: https://github.com/kubewarden/user-group-psp-policy/releases/download/v0.4.5/policy.wasm
 - name: source
   url: https://github.com/kubewarden/user-group-psp-policy
 provider:
@@ -57,7 +57,7 @@ annotations:
       hide_input: true
       type: string
       variable: description
-    - default: []
+    - default: {}
       description: Controls which user ID the containers are run with.
       group: Settings
       label: Run as user
@@ -114,7 +114,7 @@ annotations:
               tooltip: Maxium UID or GID
               type: int
               variable: max
-    - default: []
+    - default: {}
       description: Controls which primary group ID the containers are run with.
       group: Settings
       label: Run as group
@@ -165,7 +165,7 @@ annotations:
               tooltip: Maxium UID or GID
               type: int
               variable: max
-    - default: []
+    - default: {}
       description: Controls which group IDs containers add.
       group: Settings
       label: Supplemental groups
