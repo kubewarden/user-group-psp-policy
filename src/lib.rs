@@ -10,7 +10,7 @@ extern crate kubewarden_policy_sdk as kubewarden;
 use kubewarden::{logging, protocol_version_guest, request::ValidationRequest, validate_settings};
 
 mod settings;
-use settings::{Settings, Rule};
+use settings::{Rule, Settings};
 
 use slog::{o, Logger};
 
@@ -20,7 +20,6 @@ lazy_static! {
         o!("policy" => "sample-policy")
     );
 }
-
 
 #[no_mangle]
 pub extern "C" fn wapc_init() {
@@ -182,12 +181,7 @@ fn enforce_supplemental_groups(
     validation_request: &ValidationRequest<Settings>,
 ) -> Result<Option<apicore::PodSecurityContext>> {
     let mut security_context = security_context_option.unwrap_or_default();
-    match validation_request
-        .settings
-        .supplemental_groups
-        .rule
-
-    {
+    match validation_request.settings.supplemental_groups.rule {
         Rule::MustRunAs => {
             if validation_request.settings.supplemental_groups.overwrite
                 || security_context.supplemental_groups.is_none()

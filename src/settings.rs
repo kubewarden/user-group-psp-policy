@@ -234,7 +234,7 @@ mod tests {
 
     #[test]
     fn validate_run_as_groups_and_supplemental_groups_rule_values() -> Result<(), ()> {
-        let allowed_rules_values: [Rule; 3]= [Rule::RunAsAny, Rule::MustRunAs, Rule::MayRunAs];
+        let allowed_rules_values: [Rule; 3] = [Rule::RunAsAny, Rule::MustRunAs, Rule::MayRunAs];
         for rule in allowed_rules_values {
             let settings = Settings {
                 run_as_user: RuleStrategy {
@@ -646,7 +646,7 @@ mod tests {
                 ..Default::default()
             },
             supplemental_groups: RuleStrategy {
-                rule:Rule::MustRunAs,
+                rule: Rule::MustRunAs,
                 ranges: vec![IDRange {
                     min: 1000,
                     max: 1010,
