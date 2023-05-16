@@ -11,15 +11,11 @@ pub(crate) struct IDRange {
     pub max: i64,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub(crate) enum Rule {
-    #[serde(rename = "MustRunAs")]
     MustRunAs,
-    #[serde(rename = "MayRunAs")]
     MayRunAs,
-    #[serde(rename = "RunAsAny")]
     RunAsAny,
-    #[serde(rename = "MustRunAsNonRoot")]
     MustRunAsNonRoot,
 }
 
@@ -235,7 +231,7 @@ mod tests {
     #[test]
     fn validate_run_as_groups_and_supplemental_groups_rule_values() -> Result<(), ()> {
         let allowed_rules_values: [Rule; 3] = [Rule::RunAsAny, Rule::MustRunAs, Rule::MayRunAs];
-        for rule in allowed_rules_values {
+        for rule in &allowed_rules_values {
             let settings = Settings {
                 run_as_user: RuleStrategy {
                     rule: Rule::RunAsAny,
@@ -246,7 +242,7 @@ mod tests {
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: rule,
+                    rule: rule.clone(),
                     ranges: vec![IDRange {
                         min: 1000,
                         max: 1010,
@@ -283,7 +279,7 @@ mod tests {
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: Rule::MustRunAs,
+                    rule: rule.clone(),
                     ranges: vec![IDRange {
                         min: 1000,
                         max: 1010,
