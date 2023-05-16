@@ -10,7 +10,7 @@ extern crate kubewarden_policy_sdk as kubewarden;
 use kubewarden::{logging, protocol_version_guest, request::ValidationRequest, validate_settings};
 
 mod settings;
-use settings::Settings;
+use settings::{Settings, Rule};
 
 use slog::{o, Logger};
 
@@ -20,9 +20,7 @@ lazy_static! {
         o!("policy" => "sample-policy")
     );
 }
-const MUST_RUN_AS: &str = "MustRunAs";
-const MUST_RUN_AS_NON_ROOT: &str = "MustRunAsNonRoot";
-const MAY_RUN_AS: &str = "MayRunAs";
+
 
 #[no_mangle]
 pub extern "C" fn wapc_init() {
@@ -100,8 +98,8 @@ where
     T: GenericSecurityContext + std::default::Default,
 {
     let mut security_context = security_context_option.unwrap_or_default();
-    match validation_request.settings.run_as_user.rule.as_str() {
-        MUST_RUN_AS => {
+    match validation_request.settings.run_as_user.rule {
+        Rule::MustRunAs => {
             if validation_request.settings.run_as_user.overwrite
                 || security_context.run_as_user().is_none()
             {
@@ -115,7 +113,7 @@ where
                 }
             }
         }
-        MUST_RUN_AS_NON_ROOT => {
+        Rule::MustRunAsNonRoot => {
             if let Some(run_as_non_root) = security_context.run_as_non_root() {
                 if !run_as_non_root {
                     return Err(anyhow!("RunAsNonRoot should be set to true"));
@@ -131,7 +129,7 @@ where
             security_context.set_run_as_non_root(Some(true));
             return Ok(Some(security_context));
         }
-        &_ => {}
+        _ => {}
     }
     Ok(None)
 }
@@ -144,8 +142,8 @@ where
     T: GenericSecurityContext + std::default::Default,
 {
     let mut security_context = security_context_option.unwrap_or_default();
-    match validation_request.settings.run_as_group.rule.as_str() {
-        MUST_RUN_AS => {
+    match validation_request.settings.run_as_group.rule {
+        Rule::MustRunAs => {
             if validation_request.settings.run_as_group.overwrite
                 || security_context.run_as_group().is_none()
             {
@@ -163,7 +161,7 @@ where
                 }
             }
         }
-        MAY_RUN_AS => {
+        Rule::MayRunAs => {
             if let Some(group_id) = security_context.run_as_group() {
                 if !validation_request
                     .settings
@@ -174,7 +172,7 @@ where
                 }
             }
         }
-        &_ => {}
+        _ => {}
     }
     Ok(None)
 }
@@ -188,9 +186,9 @@ fn enforce_supplemental_groups(
         .settings
         .supplemental_groups
         .rule
-        .as_str()
+
     {
-        MUST_RUN_AS => {
+        Rule::MustRunAs => {
             if validation_request.settings.supplemental_groups.overwrite
                 || security_context.supplemental_groups.is_none()
             {
@@ -211,7 +209,7 @@ fn enforce_supplemental_groups(
                 }
             }
         }
-        MAY_RUN_AS => {
+        Rule::MayRunAs => {
             if let Some(group_ids) = security_context.supplemental_groups {
                 for group_id in group_ids {
                     if !validation_request
@@ -224,7 +222,7 @@ fn enforce_supplemental_groups(
                 }
             }
         }
-        &_ => (),
+        _ => (),
     }
     Ok(None)
 }
@@ -374,17 +372,17 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("MayRunAs"),
+                    rule: Rule::MayRunAs,
                     ranges: vec![IDRange {
                         min: 1000,
                         max: 4000,
@@ -412,17 +410,17 @@ mod tests {
             expected_validation_result: false,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("MayRunAs"),
+                    rule: Rule::MayRunAs,
                     ranges: vec![IDRange {
                         min: 2000,
                         max: 2500,
@@ -450,17 +448,17 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("MayRunAs"),
+                    rule: Rule::MayRunAs,
                     ranges: vec![IDRange {
                         min: 2000,
                         max: 2500,
@@ -489,17 +487,17 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![
                         IDRange {
                             min: 1500,
@@ -544,17 +542,17 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![
                         IDRange {
                             min: 1500,
@@ -589,17 +587,17 @@ mod tests {
             expected_validation_result: false,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![
                         IDRange {
                             min: 1500,
@@ -633,17 +631,17 @@ mod tests {
             expected_validation_result: false,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAsNonRoot"),
+                    rule: Rule::MustRunAsNonRoot,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -669,17 +667,17 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAsNonRoot"),
+                    rule: Rule::MustRunAsNonRoot,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -719,17 +717,17 @@ mod tests {
             expected_validation_result: false,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAsNonRoot"),
+                    rule: Rule::MustRunAsNonRoot,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -752,12 +750,12 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("MayRunAs"),
+                    rule: Rule::MayRunAs,
                     ranges: vec![IDRange {
                         min: 1000,
                         max: 2500,
@@ -765,7 +763,7 @@ mod tests {
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -788,12 +786,12 @@ mod tests {
             expected_validation_result: false,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("MayRunAs"),
+                    rule: Rule::MayRunAs,
                     ranges: vec![IDRange {
                         min: 2000,
                         max: 2500,
@@ -801,7 +799,7 @@ mod tests {
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -824,12 +822,12 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("MayRunAs"),
+                    rule: Rule::MayRunAs,
                     ranges: vec![IDRange {
                         min: 2000,
                         max: 2500,
@@ -837,7 +835,7 @@ mod tests {
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -860,7 +858,7 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![IDRange {
                         min: 1500,
                         max: 2000,
@@ -868,7 +866,7 @@ mod tests {
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![IDRange {
                         min: 2000,
                         max: 2500,
@@ -876,7 +874,7 @@ mod tests {
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -940,7 +938,7 @@ mod tests {
             expected_validation_result: false,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![IDRange {
                         min: 1500,
                         max: 2000,
@@ -948,7 +946,7 @@ mod tests {
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![IDRange {
                         min: 2000,
                         max: 2500,
@@ -956,7 +954,7 @@ mod tests {
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -980,12 +978,12 @@ mod tests {
             expected_validation_result: false,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![
                         IDRange {
                             min: 1500,
@@ -999,7 +997,7 @@ mod tests {
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1023,7 +1021,7 @@ mod tests {
             expected_validation_result: false,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![
                         IDRange {
                             min: 1500,
@@ -1037,12 +1035,12 @@ mod tests {
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1067,12 +1065,12 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![
                         IDRange {
                             min: 1500,
@@ -1086,7 +1084,7 @@ mod tests {
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1131,7 +1129,7 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![
                         IDRange {
                             min: 1500,
@@ -1145,12 +1143,12 @@ mod tests {
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1196,12 +1194,12 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![IDRange {
                         min: 1500,
                         max: 2000,
@@ -1209,7 +1207,7 @@ mod tests {
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1237,7 +1235,7 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![IDRange {
                         min: 1500,
                         max: 2000,
@@ -1245,12 +1243,12 @@ mod tests {
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1278,17 +1276,17 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1313,17 +1311,17 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![
                         IDRange {
                             min: 1500,
@@ -1366,17 +1364,17 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("MayRunAs"),
+                    rule: Rule::MayRunAs,
                     ranges: vec![IDRange {
                         min: 1000,
                         max: 4000,
@@ -1402,12 +1400,12 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![
                         IDRange {
                             min: 1000,
@@ -1421,7 +1419,7 @@ mod tests {
                     overwrite: true,
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1466,12 +1464,12 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("MayRunAs"),
+                    rule: Rule::MayRunAs,
                     ranges: vec![
                         IDRange {
                             min: 1000,
@@ -1485,7 +1483,7 @@ mod tests {
                     overwrite: true,
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1509,7 +1507,7 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![IDRange {
                         min: 1000,
                         max: 2000,
@@ -1517,12 +1515,12 @@ mod tests {
                     overwrite: true,
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1566,17 +1564,17 @@ mod tests {
             expected_validation_result: false,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAsNonRoot"),
+                    rule: Rule::MustRunAsNonRoot,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1599,17 +1597,17 @@ mod tests {
             expected_validation_result: false,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAsNonRoot"),
+                    rule: Rule::MustRunAsNonRoot,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1632,17 +1630,17 @@ mod tests {
             expected_validation_result: false,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAsNonRoot"),
+                    rule: Rule::MustRunAsNonRoot,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1665,17 +1663,17 @@ mod tests {
             expected_validation_result: false,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAsNonRoot"),
+                    rule: Rule::MustRunAsNonRoot,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1698,17 +1696,17 @@ mod tests {
             expected_validation_result: false,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAsNonRoot"),
+                    rule: Rule::MustRunAsNonRoot,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1732,17 +1730,17 @@ mod tests {
             expected_validation_result: false,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAsNonRoot"),
+                    rule: Rule::MustRunAsNonRoot,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1765,17 +1763,17 @@ mod tests {
             expected_validation_result: false,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAsNonRoot"),
+                    rule: Rule::MustRunAsNonRoot,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1820,17 +1818,17 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAsNonRoot"),
+                    rule: Rule::MustRunAsNonRoot,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1852,17 +1850,17 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAsNonRoot"),
+                    rule: Rule::MustRunAsNonRoot,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1884,17 +1882,17 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAsNonRoot"),
+                    rule: Rule::MustRunAsNonRoot,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1916,17 +1914,17 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAsNonRoot"),
+                    rule: Rule::MustRunAsNonRoot,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1948,17 +1946,17 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAsNonRoot"),
+                    rule: Rule::MustRunAsNonRoot,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -1980,17 +1978,17 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAsNonRoot"),
+                    rule: Rule::MustRunAsNonRoot,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -2025,17 +2023,17 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAsNonRoot"),
+                    rule: Rule::MustRunAsNonRoot,
                     ranges: vec![],
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -2055,7 +2053,7 @@ mod tests {
             expected_validation_result: true,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![IDRange {
                         min: 1500,
                         max: 2000,
@@ -2063,7 +2061,7 @@ mod tests {
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![IDRange {
                         min: 2000,
                         max: 2500,
@@ -2071,7 +2069,7 @@ mod tests {
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
@@ -2114,7 +2112,7 @@ mod tests {
             expected_validation_result: false,
             settings: Settings {
                 run_as_user: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![IDRange {
                         min: 1500,
                         max: 2000,
@@ -2122,7 +2120,7 @@ mod tests {
                     ..Default::default()
                 },
                 run_as_group: RuleStrategy {
-                    rule: String::from("MustRunAs"),
+                    rule: Rule::MustRunAs,
                     ranges: vec![IDRange {
                         min: 2000,
                         max: 2500,
@@ -2130,7 +2128,7 @@ mod tests {
                     ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
-                    rule: String::from("RunAsAny"),
+                    rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
