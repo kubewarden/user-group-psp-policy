@@ -7,7 +7,7 @@
 version: 0.4.9
 name: user-group-psp
 displayName: User Group PSP
-createdAt: 2023-07-07T16:35:17.282041339Z
+createdAt: 2023-10-16T07:25:37.7335952Z
 description: Kubewarden Policy that controls containers user and groups
 license: Apache-2.0
 homeURL: https://github.com/kubewarden/user-group-psp-policy
@@ -28,6 +28,10 @@ install: |
   The policy can be obtained using [`kwctl`](https://github.com/kubewarden/kwctl):
   ```console
   kwctl pull ghcr.io/kubewarden/policies/user-group-psp:v0.4.9
+  ```
+  Then, generate the policy manifest and tune it to your liking. For example:
+  ```console
+  kwctl scaffold manifest -t ClusterAdmissionPolicy registry://ghcr.io/kubewarden/policies/user-group-psp:v0.4.9
   ```
 maintainers:
 - name: Kubewarden developers
