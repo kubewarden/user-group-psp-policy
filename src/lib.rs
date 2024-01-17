@@ -1784,7 +1784,7 @@ mod tests {
     fn check_if_response_has_mutate_object_and_set_run_as_non_root(
         test_res: anyhow::Result<ValidationResponse>,
     ) -> Result<(), ()> {
-        assert!(!test_res.is_err(), "The validate function failed.");
+        assert!(test_res.is_ok(), "The validate function failed.");
         let res = test_res.unwrap();
         assert!(res.mutated_object.is_some(), "Request should be mutated");
         let run_as_non_root_json = jsonpath::select(
@@ -1989,7 +1989,7 @@ mod tests {
             },
         };
         let test_res = tc.eval(validate);
-        assert!(!test_res.is_err(), "The validate function failed.");
+        assert!(test_res.is_ok(), "The validate function failed.");
         let res = test_res.unwrap();
         assert!(res.mutated_object.is_some(), "Request should be mutated");
         let run_as_non_root_json = jsonpath::select(

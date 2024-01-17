@@ -198,7 +198,7 @@ mod tests {
         for rule in allowed_rules_values {
             let settings = Settings {
                 run_as_user: RuleStrategy {
-                    rule: rule,
+                    rule,
                     ranges: vec![IDRange {
                         min: 1000,
                         max: 1010,
@@ -480,9 +480,9 @@ mod tests {
             ..Default::default()
         };
         let is_valid = rule_strategy.is_valid_id(999);
-        assert_eq!(is_valid, false);
+        assert!(!is_valid);
         let is_valid = rule_strategy.is_valid_id(2001);
-        assert_eq!(is_valid, false);
+        assert!(!is_valid);
 
         let rule_strategy = RuleStrategy {
             rule: Rule::MustRunAs,
@@ -499,9 +499,9 @@ mod tests {
             ..Default::default()
         };
         let is_valid = rule_strategy.is_valid_id(2001);
-        assert_eq!(is_valid, false);
+        assert!(!is_valid);
         let is_valid = rule_strategy.is_valid_id(499);
-        assert_eq!(is_valid, false);
+        assert!(!is_valid);
         let is_valid = rule_strategy.is_valid_id(999);
         assert!(is_valid);
         let is_valid = rule_strategy.is_valid_id(1501);
