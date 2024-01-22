@@ -1262,6 +1262,98 @@ mod tests {
     }
 
     #[test]
+    fn must_run_as_should_accept_when_valid_user_id_is_defined_and_wrong_podsecuritycontext(
+    ) -> Result<(), ()> {
+        let request_file =
+            "test_data/pod_creation_must_run_as_with_user_id_wrong_podsecuritycontext.json";
+        let tc = Testcase {
+            name: String::from("MustRunAs should not mutate request when valid user ID is defined"),
+            fixture_file: String::from(request_file),
+            expected_validation_result: true,
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: Rule::MustRunAs,
+                    ranges: vec![IDRange {
+                        min: 1500,
+                        max: 2000,
+                    }],
+                    ..Default::default()
+                },
+                run_as_group: RuleStrategy {
+                    rule: Rule::RunAsAny,
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: Rule::RunAsAny,
+                    ranges: vec![],
+                    ..Default::default()
+                },
+            },
+        };
+
+        let res = tc.eval(validate).unwrap();
+        assert!(
+            res.mutated_object.is_none(),
+            "MustRunAs should not mutate request when valid user ID is defined"
+        );
+        assert!(
+            res.accepted,
+            "MustRunAs should accept request when valid user ID is defined"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn must_run_as_should_mutate_when_valid_user_id_is_defined_and_wrong_podsecuritycontext_and_overwrite(
+    ) -> Result<(), ()> {
+        let request_file =
+            "test_data/pod_creation_must_run_as_with_user_id_wrong_podsecuritycontext.json";
+        let tc = Testcase {
+            name: String::from("MustRunAs should not mutate request when valid user ID is defined"),
+            fixture_file: String::from(request_file),
+            expected_validation_result: true,
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule: Rule::MustRunAs,
+                    ranges: vec![IDRange {
+                        min: 1500,
+                        max: 2000,
+                    }],
+                    overwrite: true,
+                },
+                run_as_group: RuleStrategy {
+                    rule: Rule::RunAsAny,
+                    ranges: vec![],
+                    ..Default::default()
+                },
+                supplemental_groups: RuleStrategy {
+                    rule: Rule::RunAsAny,
+                    ranges: vec![],
+                    ..Default::default()
+                },
+            },
+        };
+
+        let res = tc.eval(validate).unwrap();
+        assert!(
+            res.mutated_object.is_some(),
+            "MustRunAs should mutate request"
+        );
+        let pod_securitycontext_json = jsonpath::select(
+            res.mutated_object.as_ref().unwrap(),
+            "$.spec.securityContext.runAsUser",
+        )
+        .unwrap();
+        assert_eq!(
+            pod_securitycontext_json,
+            vec![1500],
+            "MustRunAs should add the 'supplementalGroups' when it is not defined"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn run_as_any_should_not_mutate_pod() -> Result<(), ()> {
         let request_file = "test_data/pod_creation_run_as_any.json";
         let tc = Testcase {
