@@ -1486,7 +1486,7 @@ mod tests {
     }
 
     #[test]
-    fn must_run_as_should_mutates_groups_if_overwrite_is_set() -> Result<(), ()> {
+    fn must_run_as_should_mutate_groups_if_overwrite_is_set() -> Result<(), ()> {
         let request_file = "test_data/pod_creation_must_run_as_with_group_id.json";
         let tc = Testcase {
             name: String::from("'MustRunAs' should mutate groups when overwrite is 'true'"),
@@ -1550,7 +1550,7 @@ mod tests {
     }
 
     #[test]
-    fn may_run_as_should_not_mutates_group_if_overwrite_is_set() -> Result<(), ()> {
+    fn may_run_as_should_not_mutate_group_if_overwrite_is_set() -> Result<(), ()> {
         let request_file = "test_data/pod_creation_must_run_as_with_group_id.json";
         let tc = Testcase {
             name: String::from("'MayRunAs' should mutate request when overwrite is 'true'"),
