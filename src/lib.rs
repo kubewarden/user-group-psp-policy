@@ -267,6 +267,9 @@ fn validate(payload: &[u8]) -> CallResult {
         Ok(pod_spec) => {
             if let Some(mut pod_spec) = pod_spec {
                 let mut mutated: bool = false;
+
+                // first, check that all containers are valid, and mutate if necessary
+                //
                 if let Some(init_containers) = pod_spec.init_containers.as_mut() {
                     for init_container in init_containers.iter_mut() {
                         match enforce_container_security_policies(
@@ -299,15 +302,20 @@ fn validate(payload: &[u8]) -> CallResult {
                     }
                 }
 
-                match enforce_pod_spec_security_policies(&mut pod_spec, &validation_request) {
-                    Ok(mutate_request) => mutated = mutated || mutate_request,
-                    Err(error) => {
-                        return kubewarden::reject_request(
-                            Some(error.to_string()),
-                            None,
-                            None,
-                            None,
-                        )
+                // if all containers are valid, their securityContext has precendence over the
+                // pod.spec.securityContext. Hence, do nothing.
+                // If containers are invalid, also mutate pod.spec.securityContext:
+                if mutated {
+                    match enforce_pod_spec_security_policies(&mut pod_spec, &validation_request) {
+                        Ok(mutate_request) => mutated = mutated || mutate_request,
+                        Err(error) => {
+                            return kubewarden::reject_request(
+                                Some(error.to_string()),
+                                None,
+                                None,
+                                None,
+                            )
+                        }
                     }
                 }
 
