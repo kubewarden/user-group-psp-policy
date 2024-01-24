@@ -14,6 +14,14 @@
 	[ $(expr "$output" : '.*"allowed":false.*') -ne 0 ]
 	[ $(expr "$output" : '.*"message":"User ID outside defined ranges".*') -ne 0 ]
  }
+ 
+@test "MustRunAs should accept valid container user ID without mutating even if pod securityContext is invalid" {
+	run kwctl run  --request-path test_data/e2e/pod_user_150.json  --settings-path test_data/e2e/settings_must_run_as_100_200.json annotated-policy.wasm
+	[ "$status" -eq 0 ]
+	echo "$output"
+	[ $(expr "$output" : '.*"allowed":true.*') -ne 0 ]
+	[ $(expr "$output" : '.*"patchType":"JSONPatch".*') -eq 0 ]
+ }
 
 @test "MustRunAs should reject invalid group ID" {
 	run kwctl run  --request-path test_data/e2e/invalid_group_id.json  --settings-path test_data/e2e/settings_must_run_as.json annotated-policy.wasm

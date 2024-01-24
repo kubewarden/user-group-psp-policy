@@ -486,7 +486,7 @@ dependencies = [
 
 [[package]]
 name = "user-group-psp"
-version = "0.4.9"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "jsonpath_lib",
