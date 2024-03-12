@@ -38,7 +38,7 @@ The `ranges` is a list of JSON objects with two attributes: `min` and `max`. Eac
 request. Even if the value is a valid one. The default value of this attribute is `false`.
 
 This policy can inspect Pod resources, but can also operate against "higher order"
-Kuberenetes resource like Deployment, ReplicaSet, DaemonSet, ReplicationController,
+Kubernetes resources like Deployment, ReplicaSet, DaemonSet, ReplicationController,
 Job and CronJob.
 
 It's up to the operator to decide which kind of resources the policy is going to inspect.
