@@ -107,3 +107,29 @@
 	[ $(expr "$output" : '.*"allowed":true.*') -ne 0 ]
 	[ $(expr "$output" : '.*"patchType":"JSONPatch".*') -ne 0 ]
  }
+
+@test "MustRunAs should reject invalid container image user ID" {
+	run  kwctl run  --request-path test_data/e2e/invalid_container_image_user_id.json  --settings-path test_data/e2e/settings_must_run_as_container_image_user_validation.json annotated-policy.wasm
+	[ "$status" -eq 0 ]
+	echo "$output"
+	[ $(expr "$output" : '.*"allowed":false.*') -ne 0 ]
+	[ $(expr "$output" : '.*"message":"User ID defined in the container image is outside defined ranges".*') -ne 0 ]
+
+ }
+
+@test "MustRunAs should reject invalid container image group ID" {
+	run  kwctl run  --request-path test_data/e2e/invalid_container_image_user_id.json  --settings-path test_data/e2e/settings_must_run_as_container_image_group_validation.json annotated-policy.wasm
+	[ "$status" -eq 0 ]
+	echo "$output"
+	[ $(expr "$output" : '.*"allowed":false.*') -ne 0 ]
+	[ $(expr "$output" : '.*"message":"Group ID defined in the container image is outside defined ranges".*') -ne 0 ]
+ }
+
+
+@test "Settings should be invalid when container image user validation settings has an non-boolean value" {
+	run  kwctl run  --request-path test_data/e2e/invalid_container_image_user_id.json  --settings-path test_data/e2e/settings_invalid_container_image_verification.json annotated-policy.wasm
+	[ "$status" -ne 0 ]
+	echo "$output"
+	[ $(expr "$output" : '.*invalid type: integer `1`, expected a boolean.*') -ne 0 ]
+
+ }

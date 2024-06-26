@@ -1,8 +1,5 @@
-use crate::LOG_DRAIN;
-
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use slog::info;
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 #[serde(default)]
@@ -120,12 +117,11 @@ pub(crate) struct Settings {
     pub run_as_user: RuleStrategy,
     pub run_as_group: RuleStrategy,
     pub supplemental_groups: RuleStrategy,
+    pub validate_container_image_configuration: bool,
 }
 
 impl kubewarden::settings::Validatable for Settings {
     fn validate(&self) -> core::result::Result<(), String> {
-        info!(LOG_DRAIN, "starting settings validation");
-
         match valid_user_rule_settings(
             &self.run_as_user.rule,
             &self.run_as_user.ranges,
@@ -186,6 +182,7 @@ mod tests {
                 ranges: vec![IDRange { min: 1, max: 10 }],
                 ..Default::default()
             },
+            ..Default::default()
         };
 
         assert!(settings.validate().is_ok());
@@ -221,6 +218,7 @@ mod tests {
                     }],
                     ..Default::default()
                 },
+                ..Default::default()
             };
 
             assert!(settings.validate().is_ok());
@@ -257,6 +255,7 @@ mod tests {
                     }],
                     ..Default::default()
                 },
+                ..Default::default()
             };
 
             assert!(settings.validate().is_ok());
@@ -286,6 +285,7 @@ mod tests {
                     }],
                     ..Default::default()
                 },
+                ..Default::default()
             };
 
             assert!(settings.validate().is_ok());
@@ -311,6 +311,7 @@ mod tests {
                 ranges: vec![IDRange { min: 1, max: 10 }],
                 ..Default::default()
             },
+            ..Default::default()
         };
 
         assert!(
@@ -334,6 +335,7 @@ mod tests {
                 ranges: vec![IDRange { min: 1, max: 10 }],
                 ..Default::default()
             },
+            ..Default::default()
         };
 
         assert!(
@@ -357,6 +359,7 @@ mod tests {
                 ranges: vec![IDRange { min: 1, max: 10 }, IDRange { min: 11, max: 10 }],
                 ..Default::default()
             },
+            ..Default::default()
         };
 
         assert!(
@@ -384,6 +387,7 @@ mod tests {
                 ranges: vec![IDRange { min: 1, max: 10 }],
                 ..Default::default()
             },
+            ..Default::default()
         };
 
         assert!(
@@ -407,6 +411,7 @@ mod tests {
                 ranges: vec![IDRange { min: 1, max: 10 }],
                 ..Default::default()
             },
+            ..Default::default()
         };
 
         assert!(
@@ -430,6 +435,7 @@ mod tests {
                 ranges: vec![],
                 ..Default::default()
             },
+            ..Default::default()
         };
 
         assert!(
@@ -519,6 +525,7 @@ mod tests {
                     max: 1010,
                 }],
                 overwrite: true,
+                ..Default::default()
             },
             run_as_group: RuleStrategy {
                 rule: Rule::RunAsAny,
@@ -530,6 +537,7 @@ mod tests {
                 ranges: vec![],
                 ..Default::default()
             },
+            ..Default::default()
         };
         settings.validate()?;
 
@@ -541,6 +549,7 @@ mod tests {
                     max: 1010,
                 }],
                 overwrite: true,
+                ..Default::default()
             },
             run_as_group: RuleStrategy {
                 rule: Rule::RunAsAny,
@@ -552,6 +561,7 @@ mod tests {
                 ranges: vec![],
                 ..Default::default()
             },
+            ..Default::default()
         };
         assert!(
             settings.validate().is_err(),
@@ -571,12 +581,14 @@ mod tests {
                     max: 1010,
                 }],
                 overwrite: true,
+                ..Default::default()
             },
             supplemental_groups: RuleStrategy {
                 rule: Rule::RunAsAny,
                 ranges: vec![],
                 ..Default::default()
             },
+            ..Default::default()
         };
         settings.validate()?;
 
@@ -593,12 +605,14 @@ mod tests {
                     max: 1010,
                 }],
                 overwrite: true,
+                ..Default::default()
             },
             supplemental_groups: RuleStrategy {
                 rule: Rule::RunAsAny,
                 ranges: vec![],
                 ..Default::default()
             },
+            ..Default::default()
         };
         assert!(
             settings.validate().is_err(),
@@ -618,12 +632,14 @@ mod tests {
                     max: 1010,
                 }],
                 overwrite: true,
+                ..Default::default()
             },
             supplemental_groups: RuleStrategy {
                 rule: Rule::RunAsAny,
                 ranges: vec![],
                 ..Default::default()
             },
+            ..Default::default()
         };
         assert!(
             settings.validate().is_err(),
@@ -648,7 +664,9 @@ mod tests {
                     max: 1010,
                 }],
                 overwrite: true,
+                ..Default::default()
             },
+            ..Default::default()
         };
         settings.validate()?;
 
@@ -670,7 +688,9 @@ mod tests {
                     max: 1010,
                 }],
                 overwrite: true,
+                ..Default::default()
             },
+            ..Default::default()
         };
         assert!(
             settings.validate().is_err(),
@@ -695,7 +715,9 @@ mod tests {
                     max: 1010,
                 }],
                 overwrite: true,
+                ..Default::default()
             },
+            ..Default::default()
         };
         assert!(
             settings.validate().is_err(),
