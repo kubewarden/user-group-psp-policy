@@ -1,6 +1,7 @@
 use lazy_static::lazy_static;
 
 use guest::prelude::*;
+use kubewarden_policy_sdk::host_capabilities::oci::get_manifest_and_config;
 use kubewarden_policy_sdk::wapc_guest as guest;
 
 use anyhow::{anyhow, Result};
@@ -12,12 +13,12 @@ use kubewarden::{logging, protocol_version_guest, request::ValidationRequest, va
 mod settings;
 use settings::{Rule, Settings};
 
-use slog::{o, Logger};
+use slog::{o, warn, Logger};
 
 lazy_static! {
     static ref LOG_DRAIN: Logger = Logger::root(
         logging::KubewardenDrain::new(),
-        o!("policy" => "sample-policy")
+        o!("policy" => "user-group-policy")
     );
 }
 
@@ -89,16 +90,55 @@ impl GenericSecurityContext for apicore::PodSecurityContext {
     }
 }
 
+fn get_user_group_uid_from_image_configuration(
+    container_image_config: Option<oci_spec::image::ImageConfiguration>,
+) -> Result<(Option<i64>, Option<i64>)> {
+    if let Some(image_config) = container_image_config {
+        if let Some(user) = image_config.config().clone().unwrap_or_default().user() {
+            let user_group: Vec<&str> = user.split(':').collect();
+            if let Ok(user_id) = user_group[0].parse::<i64>() {
+                if user_group.len() == 2 {
+                    if let Ok(group_id) = user_group[1].parse::<i64>() {
+                        return Ok((Some(user_id), Some(group_id)));
+                    } else {
+                        return Err(anyhow!(
+                            "Invalid group ID in the container image configuration: \"{}\"",
+                            user_group[1]
+                        ));
+                    }
+                }
+                return Ok((Some(user_id), None));
+            } else {
+                return Err(anyhow!(
+                    "Invalid user ID in the container image configuration: \"{}\"",
+                    user_group[0]
+                ));
+            }
+        }
+    }
+    Ok((None, None))
+}
+
 fn enforce_run_as_user_rule<T>(
     security_context_option: Option<T>,
     validation_request: &ValidationRequest<Settings>,
+    container_image_config: Option<oci_spec::image::ImageConfiguration>,
 ) -> Result<Option<T>>
 where
     T: GenericSecurityContext + std::default::Default,
 {
+    let container_user_group_uid =
+        get_user_group_uid_from_image_configuration(container_image_config)?;
     let mut security_context = security_context_option.unwrap_or_default();
     match validation_request.settings.run_as_user.rule {
         Rule::MustRunAs => {
+            if let (Some(user_id), _) = container_user_group_uid {
+                if !validation_request.settings.run_as_user.is_valid_id(user_id) {
+                    return Err(anyhow!(
+                        "User ID defined in the container image is outside defined ranges"
+                    ));
+                }
+            }
             if validation_request.settings.run_as_user.overwrite
                 || security_context.run_as_user().is_none()
             {
@@ -113,6 +153,13 @@ where
             }
         }
         Rule::MustRunAsNonRoot => {
+            if let (Some(user_id), _) = container_user_group_uid {
+                if user_id == 0 {
+                    return Err(anyhow!(
+                        "User ID defined in the container image cannot be root ID (0)"
+                    ));
+                }
+            }
             if let Some(run_as_non_root) = security_context.run_as_non_root() {
                 if !run_as_non_root {
                     return Err(anyhow!("RunAsNonRoot should be set to true"));
@@ -136,10 +183,24 @@ where
 fn enforce_run_as_group<T>(
     security_context_option: Option<T>,
     validation_request: &ValidationRequest<Settings>,
+    container_image_config: Option<oci_spec::image::ImageConfiguration>,
 ) -> Result<Option<T>>
 where
     T: GenericSecurityContext + std::default::Default,
 {
+    let container_user_group_uid =
+        get_user_group_uid_from_image_configuration(container_image_config)?;
+    if let (_, Some(group_id)) = container_user_group_uid {
+        if !validation_request
+            .settings
+            .run_as_group
+            .is_valid_id(group_id)
+        {
+            return Err(anyhow!(
+                "Group ID defined in the container image is outside defined ranges"
+            ));
+        }
+    }
     let mut security_context = security_context_option.unwrap_or_default();
     match validation_request.settings.run_as_group.rule {
         Rule::MustRunAs => {
@@ -225,15 +286,35 @@ fn enforce_container_security_policies(
     container: &mut apicore::Container,
     validation_request: &ValidationRequest<Settings>,
 ) -> Result<bool> {
+    let mut container_image_config = None;
+    if validation_request
+        .settings
+        .validate_container_image_configuration
+    {
+        let container_image = container.image.as_ref().unwrap();
+        let response = get_manifest_and_config(container_image)?;
+        if *response.config.os() != oci_spec::image::Os::Windows {
+            container_image_config = Some(response.config);
+        } else {
+            warn!(LOG_DRAIN, "Windows containers are not supported by the policy. Skipping container image configuration user validation."; "image" => &container_image);
+        }
+    }
+
     let mut mutated: bool = false;
-    let mutate_request =
-        enforce_run_as_user_rule(container.security_context.clone(), validation_request)?;
+    let mutate_request = enforce_run_as_user_rule(
+        container.security_context.clone(),
+        validation_request,
+        container_image_config.clone(),
+    )?;
     if mutate_request.is_some() {
         mutated = true;
         container.security_context = mutate_request;
     }
-    let mutate_request =
-        enforce_run_as_group(container.security_context.clone(), validation_request)?;
+    let mutate_request = enforce_run_as_group(
+        container.security_context.clone(),
+        validation_request,
+        container_image_config,
+    )?;
     if mutate_request.is_some() {
         mutated = true;
         container.security_context = mutate_request;
@@ -247,13 +328,13 @@ fn enforce_pod_spec_security_policies(
 ) -> Result<bool> {
     let mut mutated: bool = false;
     let mutate_request =
-        enforce_run_as_user_rule(podspec.security_context.clone(), validation_request)?;
+        enforce_run_as_user_rule(podspec.security_context.clone(), validation_request, None)?;
     if mutate_request.is_some() {
         mutated = true;
         podspec.security_context = mutate_request;
     }
     let mutate_request =
-        enforce_run_as_group(podspec.security_context.clone(), validation_request)?;
+        enforce_run_as_group(podspec.security_context.clone(), validation_request, None)?;
     if mutate_request.is_some() {
         mutated = true;
         podspec.security_context = mutate_request;
@@ -356,10 +437,14 @@ fn validate(payload: &[u8]) -> CallResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use k8s_openapi::api::core::v1::SecurityContext;
+    use kubewarden::request::KubernetesAdmissionRequest;
+    use rstest::rstest;
 
     use jsonpath_lib as jsonpath;
     use kubewarden_policy_sdk::response::ValidationResponse;
     use kubewarden_policy_sdk::test::Testcase;
+    use oci_spec::image::{ConfigBuilder, ImageConfigurationBuilder};
     use settings::Settings;
     use settings::{IDRange, RuleStrategy};
 
@@ -391,6 +476,7 @@ mod tests {
                     }],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let res = tc.eval(validate).unwrap();
@@ -429,6 +515,7 @@ mod tests {
                     }],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let res = tc.eval(validate).unwrap();
@@ -467,6 +554,7 @@ mod tests {
                     }],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let res = tc.eval(validate).unwrap();
@@ -512,6 +600,7 @@ mod tests {
                     ],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -567,6 +656,7 @@ mod tests {
                     ],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -612,6 +702,7 @@ mod tests {
                     ],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -647,6 +738,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let res = tc.eval(validate).unwrap();
@@ -683,6 +775,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let res = tc.eval(validate).unwrap();
@@ -733,6 +826,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let res = tc.eval(validate).unwrap();
@@ -769,6 +863,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let res = tc.eval(validate).unwrap();
@@ -805,6 +900,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let res = tc.eval(validate).unwrap();
@@ -841,6 +937,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let res = tc.eval(validate).unwrap();
@@ -880,6 +977,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -960,6 +1058,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -1003,6 +1102,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -1046,6 +1146,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -1090,6 +1191,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -1154,6 +1256,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -1213,6 +1316,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -1254,6 +1358,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -1297,6 +1402,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -1329,6 +1435,7 @@ mod tests {
                         max: 2000,
                     }],
                     overwrite: true,
+                    ..Default::default()
                 },
                 run_as_group: RuleStrategy {
                     rule: Rule::RunAsAny,
@@ -1340,6 +1447,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -1384,6 +1492,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -1427,7 +1536,9 @@ mod tests {
                         },
                     ],
                     overwrite: true,
+                    ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -1474,7 +1585,9 @@ mod tests {
                         max: 4000,
                     }],
                     overwrite: true,
+                    ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let res = tc.eval(validate).unwrap();
@@ -1511,12 +1624,14 @@ mod tests {
                         },
                     ],
                     overwrite: true,
+                    ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
                     rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -1575,12 +1690,14 @@ mod tests {
                         },
                     ],
                     overwrite: true,
+                    ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
                     rule: Rule::RunAsAny,
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -1607,6 +1724,7 @@ mod tests {
                         max: 2000,
                     }],
                     overwrite: true,
+                    ..Default::default()
                 },
                 run_as_group: RuleStrategy {
                     rule: Rule::RunAsAny,
@@ -1618,6 +1736,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -1672,6 +1791,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let res = tc.eval(validate).unwrap();
@@ -1705,6 +1825,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let res = tc.eval(validate).unwrap();
@@ -1738,6 +1859,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let res = tc.eval(validate).unwrap();
@@ -1771,6 +1893,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let res = tc.eval(validate).unwrap();
@@ -1804,6 +1927,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let res = tc.eval(validate).unwrap();
@@ -1838,6 +1962,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let res = tc.eval(validate).unwrap();
@@ -1871,6 +1996,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let res = tc.eval(validate).unwrap();
@@ -1926,6 +2052,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let test_res = tc.eval(validate);
@@ -1958,6 +2085,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let test_res = tc.eval(validate);
@@ -1990,6 +2118,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let test_res = tc.eval(validate);
@@ -2022,6 +2151,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let test_res = tc.eval(validate);
@@ -2054,6 +2184,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let test_res = tc.eval(validate);
@@ -2086,6 +2217,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let test_res = tc.eval(validate);
@@ -2131,6 +2263,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
         let test_res = tc.eval(validate);
@@ -2167,6 +2300,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -2226,6 +2360,7 @@ mod tests {
                     ranges: vec![],
                     ..Default::default()
                 },
+                ..Default::default()
             },
         };
 
@@ -2235,5 +2370,217 @@ mod tests {
             "MustRunAs should not mutate request when user ID is invalid"
         );
         Ok(())
+    }
+
+    #[rstest]
+    #[case("65533", Rule::MustRunAs, 65533, 65533, None)]
+    #[case(
+        "65534",
+        Rule::MustRunAs,
+        65533,
+        65533,
+        Some("User ID defined in the container image is outside defined ranges")
+    )]
+    #[case("65533:65533", Rule::MustRunAs, 65533, 65533, None)]
+    #[case(
+        "myuser:65533",
+        Rule::MustRunAs,
+        65534,
+        65534,
+        Some("Invalid user ID in the container image configuration: \"myuser\"")
+    )]
+    #[case(
+        "myuser:mygroup",
+        Rule::MustRunAs,
+        65534,
+        65534,
+        Some("Invalid user ID in the container image configuration: \"myuser\"")
+    )]
+    #[case(
+        "65533:mygroup",
+        Rule::MustRunAs,
+        65534,
+        65534,
+        Some("Invalid group ID in the container image configuration: \"mygroup\"")
+    )]
+    #[case("65533", Rule::MustRunAsNonRoot, 65533, 65533, None)]
+    #[case("65533:65533", Rule::MustRunAsNonRoot, 65533, 65533, None)]
+    #[case(
+        "myuser:65533",
+        Rule::MustRunAsNonRoot,
+        65534,
+        65534,
+        Some("Invalid user ID in the container image configuration: \"myuser\"")
+    )]
+    #[case(
+        "myuser:mygroup",
+        Rule::MustRunAsNonRoot,
+        65534,
+        65534,
+        Some("Invalid user ID in the container image configuration: \"myuser\"")
+    )]
+    #[case(
+        "65533:mygroup",
+        Rule::MustRunAsNonRoot,
+        65534,
+        65534,
+        Some("Invalid group ID in the container image configuration: \"mygroup\"")
+    )]
+    #[case(
+        "0",
+        Rule::MustRunAsNonRoot,
+        65533,
+        65533,
+        Some("User ID defined in the container image cannot be root ID (0)")
+    )]
+    #[case(
+        "0:65533",
+        Rule::MustRunAsNonRoot,
+        65533,
+        65533,
+        Some("User ID defined in the container image cannot be root ID (0)")
+    )]
+    #[case(
+        "",
+        Rule::MustRunAs,
+        65533,
+        65533,
+        Some("Invalid user ID in the container image configuration: \"\"")
+    )]
+    fn enforce_run_as_user_rule_in_container_image(
+        #[case] user_group: &str,
+        #[case] rule: Rule,
+        #[case] min: i64,
+        #[case] max: i64,
+        #[case] error: Option<&str>,
+    ) {
+        let config = ConfigBuilder::default()
+            .user(user_group)
+            .build()
+            .expect("Failed to build configuration");
+        let image_config = ImageConfigurationBuilder::default()
+            .config(config)
+            .build()
+            .expect("Failed to build image configuration");
+        let validation_request = ValidationRequest {
+            settings: Settings {
+                run_as_user: RuleStrategy {
+                    rule,
+                    ranges: vec![IDRange { min, max }],
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            request: KubernetesAdmissionRequest {
+                ..Default::default()
+            },
+        };
+        let security_context = Some(SecurityContext {
+            run_as_user: Some(min),
+            ..Default::default()
+        });
+        let result =
+            enforce_run_as_user_rule(security_context, &validation_request, Some(image_config));
+        match error {
+            Some(e) => {
+                let error = result.expect_err("Expected error but got success");
+                assert_eq!(error.to_string(), e,);
+            }
+            None => {
+                assert!(
+                    result.is_ok(),
+                    "Expected success but got error: {}",
+                    result.expect_err("Cannot get error").to_string()
+                );
+            }
+        }
+    }
+
+    #[rstest]
+    #[case("65533", Rule::MustRunAs, 65533, 65533, None)]
+    #[case("65534", Rule::MustRunAs, 65533, 65533, None)]
+    #[case("65533:65533", Rule::MustRunAs, 65533, 65533, None)]
+    #[case(
+        "myuser:65533",
+        Rule::MustRunAs,
+        65533,
+        65533,
+        Some("Invalid user ID in the container image configuration: \"myuser\"")
+    )]
+    #[case(
+        "myuser:mygroup",
+        Rule::MustRunAs,
+        65534,
+        65534,
+        Some("Invalid user ID in the container image configuration: \"myuser\"")
+    )]
+    #[case(
+        "65533:mygroup",
+        Rule::MustRunAs,
+        65533,
+        65533,
+        Some("Invalid group ID in the container image configuration: \"mygroup\"")
+    )]
+    #[case(
+        "65533:65534",
+        Rule::MustRunAs,
+        65533,
+        65533,
+        Some("Group ID defined in the container image is outside defined ranges")
+    )]
+    #[case(
+        "65533:65532",
+        Rule::MustRunAs,
+        65533,
+        65533,
+        Some("Group ID defined in the container image is outside defined ranges")
+    )]
+    fn enforce_run_as_group_rule_in_container_image(
+        #[case] user_group: &str,
+        #[case] rule: Rule,
+        #[case] min: i64,
+        #[case] max: i64,
+        #[case] error: Option<&str>,
+    ) {
+        let config = ConfigBuilder::default()
+            .user(user_group)
+            .build()
+            .expect("Failed to build configuration");
+        let image_config = ImageConfigurationBuilder::default()
+            .config(config)
+            .build()
+            .expect("Failed to build image configuration");
+        let validation_request = ValidationRequest {
+            settings: Settings {
+                run_as_group: RuleStrategy {
+                    rule,
+                    ranges: vec![IDRange { min, max }],
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            request: KubernetesAdmissionRequest {
+                ..Default::default()
+            },
+        };
+        let security_context = Some(SecurityContext {
+            run_as_group: Some(min),
+            ..Default::default()
+        });
+        let result =
+            enforce_run_as_group(security_context, &validation_request, Some(image_config));
+        match error {
+            Some(e) => {
+                let error = result.expect_err("Expected error but got success");
+                assert_eq!(error.to_string(), e,);
+            }
+            None => {
+                assert!(
+                    result.is_ok(),
+                    "Expected success but got error: {}",
+                    result.expect_err("Cannot get error").to_string()
+                );
+            }
+        }
     }
 }

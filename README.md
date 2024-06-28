@@ -16,6 +16,7 @@ The policy has three settings:
 * `run_as_user`: Controls which user ID the containers are run with. As well as the user in the securityContext from PodSpec.
 * `run_as_group`:  Controls which primary group ID the containers are run with. As well as the group in the securityContext from PodSpec.
 * `supplemental_groups`: Controls which group IDs containers add.
+* `validate_container_image_configuration`: A boolean value that allows the policy to validate the `USER` directive in the container image configuration. The default value is `false`.
 
 All three settings have no defaults, just like the deprecated PSP (also, they would get used if `mutating` is `true`).
 
@@ -37,8 +38,22 @@ the strategy used by the policy to enforce users and groups used in containers. 
 
 The `ranges` is a list of JSON objects with two attributes: `min` and `max`. Each range object define the user/group ID range used by the rule.
 
-`overwrite` attribute can be set `true` only with the rule `MustRunAs`. This flag configure the policy to mutate the `runAsUser` or `runAsGroup` despite of the value present in the
-request. Even if the value is a valid one. The default value of this attribute is `false`.
+`overwrite` attribute can be set `true` only with the rule `MustRunAs`. This
+flag configure the policy to mutate the `runAsUser` or `runAsGroup` despite of
+the value present in the request. Even if the value is a valid one. The default
+value of this attribute is `false`.
+
+The `validate_container_image_configuration` configuration in the policy
+settings is a boolean value that allows the policy to validate the `USER`
+directive in the container image. The default value is `false`. If set to
+`true`, the policy will enforce the same rules as `MustRunAs` and
+`MustRunAsNonRoot`  for the `run_as_user`. And checks if the group of the
+`USER` directive is in the `run_as_group` range.
+
+> [!NOTE]  
+> Container image validation is skipped if the container image is a Windows container.
+> And user and groups names are not allowed. The user and group should be defined 
+> as uid and gid.
 
 This policy can inspect Pod resources, but can also operate against "higher order"
 Kubernetes resources like Deployment, ReplicaSet, DaemonSet, ReplicationController,
