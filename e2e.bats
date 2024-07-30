@@ -133,3 +133,10 @@
 	[ $(expr "$output" : '.*invalid type: integer `1`, expected a boolean.*') -ne 0 ]
 
  }
+
+@test "RunAsAny should accept when container image group validation is enabled" {
+	run kwctl run  --request-path test_data/e2e/invalid_container_image_user_id.json --settings-path test_data/e2e/settings_run_as_any_and_validate_container.json annotated-policy.wasm
+	[ "$status" -eq 0 ]
+	echo "$output"
+	[ $(expr "$output" : '.*"allowed":true.*') -ne 0 ]
+ }
