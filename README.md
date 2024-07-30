@@ -17,6 +17,17 @@ The policy has three settings:
 * `run_as_group`:  Controls which primary group ID the containers are run with. As well as the group in the securityContext from PodSpec.
 * `supplemental_groups`: Controls which group IDs containers add.
 * `validate_container_image_configuration`: A boolean value that allows the policy to validate the `USER` directive in the container image configuration. The default value is `false`.
+> [!WARNING]  
+> When container image validation is enabled, the policy performs a host
+> capability call to access the container image metadata stored in the
+> registry. This involves network access and can slow down the policy
+> evaluation in a cold execution when this data is not stored in the cache.
+> Therefore, the policy server can interrupt the evaluation if it takes too
+> long to complete. This is controlled by a configuration in the policy server.
+> If necessary,
+> [adjust](https://docs.kubewarden.io/reference/policy-evaluation-timeout#configuration)
+> to avoid the interruption of the policy evaluation.
+
 
 All three settings have no defaults, just like the deprecated PSP (also, they would get used if `mutating` is `true`).
 
