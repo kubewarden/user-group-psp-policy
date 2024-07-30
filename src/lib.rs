@@ -180,13 +180,11 @@ where
     Ok(None)
 }
 
-fn enforce_run_as_group<T>(
-    security_context_option: Option<T>,
+fn enforce_container_image_group(
     validation_request: &ValidationRequest<Settings>,
     container_image_config: Option<oci_spec::image::ImageConfiguration>,
-) -> Result<Option<T>>
+) -> Result<()>
 where
-    T: GenericSecurityContext + std::default::Default,
 {
     let container_user_group_uid =
         get_user_group_uid_from_image_configuration(container_image_config)?;
@@ -201,9 +199,21 @@ where
             ));
         }
     }
+    Ok(())
+}
+
+fn enforce_run_as_group<T>(
+    security_context_option: Option<T>,
+    validation_request: &ValidationRequest<Settings>,
+    container_image_config: Option<oci_spec::image::ImageConfiguration>,
+) -> Result<Option<T>>
+where
+    T: GenericSecurityContext + std::default::Default,
+{
     let mut security_context = security_context_option.unwrap_or_default();
     match validation_request.settings.run_as_group.rule {
         Rule::MustRunAs => {
+            enforce_container_image_group(validation_request, container_image_config)?;
             if validation_request.settings.run_as_group.overwrite
                 || security_context.run_as_group().is_none()
             {
@@ -222,6 +232,7 @@ where
             }
         }
         Rule::MayRunAs => {
+            enforce_container_image_group(validation_request, container_image_config)?;
             if let Some(group_id) = security_context.run_as_group() {
                 if !validation_request
                     .settings
