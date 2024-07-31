@@ -1,0 +1,260 @@
+# Kubewarden Artifacthub Package config
+#
+# Use this config to submit the policy to https://artifacthub.io.
+#
+# This config can be saved to its default location with:
+#   kwctl scaffold artifacthub > artifacthub-pkg.yml 
+version: 0.6.2
+name: user-group-psp
+displayName: User Group PSP
+createdAt: 2024-07-31T13:55:22.670292486Z
+description: Kubewarden Policy that controls containers user and groups
+license: Apache-2.0
+homeURL: https://github.com/kubewarden/user-group-psp-policy
+containersImages:
+- name: policy
+  image: ghcr.io/kubewarden/policies/user-group-psp:v0.6.2
+keywords:
+- psp
+- container
+- user
+- group
+links:
+- name: policy
+  url: https://github.com/kubewarden/user-group-psp-policy/releases/download/v0.6.2/policy.wasm
+- name: source
+  url: https://github.com/kubewarden/user-group-psp-policy
+install: |
+  The policy can be obtained using [`kwctl`](https://github.com/kubewarden/kwctl):
+  ```console
+  kwctl pull ghcr.io/kubewarden/policies/user-group-psp:v0.6.2
+  ```
+  Then, generate the policy manifest and tune it to your liking. For example:
+  ```console
+  kwctl scaffold manifest -t ClusterAdmissionPolicy registry://ghcr.io/kubewarden/policies/user-group-psp:v0.6.2
+  ```
+maintainers:
+- name: Kubewarden developers
+  email: cncf-kubewarden-maintainers@lists.cncf.io
+provider:
+  name: kubewarden
+recommendations:
+- url: https://artifacthub.io/packages/helm/kubewarden/kubewarden-controller
+annotations:
+  kubewarden/mutation: 'true'
+  kubewarden/questions-ui: |
+    questions:
+    - default: null
+      description: >-
+        This policy is a replacement for the Kubernetes Pod Security Policy that
+        controls containers user and groups.
+      group: Settings
+      label: Description
+      required: false
+      hide_input: true
+      type: string
+      variable: description
+    - default: {}
+      description: Controls which user ID the containers are run with.
+      group: Settings
+      label: Run as user
+      hide_input: true
+      type: map[
+      variable: run_as_user
+      subquestions:
+        - default: ''
+          tooltip: >-
+            Defines the strategy used by the policy to enforce users and groups used
+            in containers.
+          group: Settings
+          label: Rule
+          options:
+            - MustRunAs
+            - MustRunAsNonRoot
+            - RunAsAny
+          type: enum
+          variable: run_as_user.rule
+        - default: false
+          group: Settings
+          label: Overwrite
+          show_if: run_as_user.rule=MustRunAs
+          title: Overwrite
+          tooltip: >-
+            The overwrite attribute can be set only with the MustRunAs rule. This
+            flag configures the policy to mutate the runAsUser or runAsGroup despite
+            of the value present in the request - even if the value is a valid one.
+            The default value of this attribute is false.
+          type: boolean
+          variable: run_as_user.overwrite
+        - default: []
+          description: >-
+            Ranges is a list of JSON objects with two attributes: min and max. Each
+            range object define the user/group ID range used by the rule.
+          group: Settings
+          label: Ranges
+          show_if: run_as_user.rule=MustRunAs||run_as_user.rule=MustRunAsNonRoot
+          hide_input: true
+          type: sequence[
+          variable: run_as_user.ranges
+          sequence_questions:
+            - default: 0
+              group: Settings
+              label: min
+              show_if: run_as_user.rule=MustRunAs||run_as_user.rule=MustRunAsNonRoot
+              tooltip: Minimum UID or GID
+              type: int
+              variable: min
+            - default: 0
+              group: Settings
+              label: max
+              show_if: run_as_user.rule=MustRunAs||run_as_user.rule=MustRunAsNonRoot
+              tooltip: Maxium UID or GID
+              type: int
+              variable: max
+    - default: {}
+      description: Controls which primary group ID the containers are run with.
+      group: Settings
+      label: Run as group
+      hide_input: true
+      type: map[
+      variable: run_as_group
+      subquestions:
+        - default: ''
+          tooltip: >-
+            Defines the strategy used by the policy to enforce users and groups used
+            in containers.
+          group: Settings
+          label: Rule
+          options:
+            - MustRunAs
+            - MayRunAs
+            - RunAsAny
+          type: enum
+          variable: run_as_group.rule
+        - default: false
+          group: Settings
+          label: Overwrite
+          show_if: run_as_group.rule=MustRunAs
+          type: boolean
+          variable: run_as_group.overwrite
+        - default: []
+          description: >-
+            Ranges is a list of JSON objects with two attributes: min and max. Each
+            range object define the user/group ID range used by the rule.
+          group: Settings
+          label: Ranges
+          show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MayRunAs
+          hide_input: true
+          type: sequence[
+          variable: run_as_group.ranges
+          sequence_questions:
+            - default: 0
+              group: Settings
+              label: min
+              show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MayRunAs
+              tooltip: Minimum UID or GID
+              type: int
+              variable: min
+            - default: 0
+              group: Settings
+              label: max
+              show_if: run_as_group.rule=MustRunAs||run_as_group.rule=MayRunAs
+              tooltip: Maxium UID or GID
+              type: int
+              variable: max
+    - default: {}
+      description: Controls which group IDs containers add.
+      group: Settings
+      label: Supplemental groups
+      hide_input: true
+      type: map[
+      variable: supplemental_groups
+      subquestions:
+        - default: ''
+          tooltip: >-
+            Defines the strategy used by the policy to enforce users and groups used
+            in containers.
+          group: Settings
+          label: Rule
+          options:
+            - MustRunAs
+            - MayRunAs
+            - RunAsAny
+          type: enum
+          variable: supplemental_groups.rule
+        - default: false
+          group: Settings
+          label: Overwrite
+          show_if: >-
+            supplemental_groups.rule=MustRunAs
+          type: boolean
+          variable: supplemental_groups.overwrite
+        - default: []
+          description: >-
+            Ranges is a list of JSON objects with two attributes: min and max. Each
+            range object define the user/group ID range used by the rule.
+          group: Settings
+          label: Ranges
+          show_if: >-
+            supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MayRunAs
+          hide_input: true
+          type: sequence[
+          variable: supplemental_groups.ranges
+          sequence_questions:
+            - default: 0
+              group: Settings
+              label: min
+              show_if: >-
+                supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MayRunAs
+              tooltip: Minimum UID or GID
+              type: int
+              variable: min
+            - default: 0
+              group: Settings
+              label: max
+              show_if: >-
+                supplemental_groups.rule=MustRunAs||supplemental_groups.rule=MayRunAs
+              tooltip: Maxium UID or GID
+              type: int
+              variable: max
+  kubewarden/resources: Pod
+  kubewarden/rules: |
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      resources:
+      - pods
+      operations:
+      - CREATE
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      resources:
+      - replicationcontrollers
+      operations:
+      - CREATE
+      - UPDATE
+    - apiGroups:
+      - apps
+      apiVersions:
+      - v1
+      resources:
+      - deployments
+      - replicasets
+      - statefulsets
+      - daemonsets
+      operations:
+      - CREATE
+      - UPDATE
+    - apiGroups:
+      - batch
+      apiVersions:
+      - v1
+      resources:
+      - jobs
+      - cronjobs
+      operations:
+      - CREATE
+      - UPDATE
