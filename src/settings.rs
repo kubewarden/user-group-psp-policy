@@ -525,7 +525,6 @@ mod tests {
                     max: 1010,
                 }],
                 overwrite: true,
-                ..Default::default()
             },
             run_as_group: RuleStrategy {
                 rule: Rule::RunAsAny,
@@ -549,7 +548,6 @@ mod tests {
                     max: 1010,
                 }],
                 overwrite: true,
-                ..Default::default()
             },
             run_as_group: RuleStrategy {
                 rule: Rule::RunAsAny,
@@ -581,7 +579,6 @@ mod tests {
                     max: 1010,
                 }],
                 overwrite: true,
-                ..Default::default()
             },
             supplemental_groups: RuleStrategy {
                 rule: Rule::RunAsAny,
@@ -605,7 +602,6 @@ mod tests {
                     max: 1010,
                 }],
                 overwrite: true,
-                ..Default::default()
             },
             supplemental_groups: RuleStrategy {
                 rule: Rule::RunAsAny,
@@ -632,7 +628,6 @@ mod tests {
                     max: 1010,
                 }],
                 overwrite: true,
-                ..Default::default()
             },
             supplemental_groups: RuleStrategy {
                 rule: Rule::RunAsAny,
@@ -664,7 +659,6 @@ mod tests {
                     max: 1010,
                 }],
                 overwrite: true,
-                ..Default::default()
             },
             ..Default::default()
         };
@@ -688,7 +682,6 @@ mod tests {
                     max: 1010,
                 }],
                 overwrite: true,
-                ..Default::default()
             },
             ..Default::default()
         };
@@ -715,7 +708,6 @@ mod tests {
                     max: 1010,
                 }],
                 overwrite: true,
-                ..Default::default()
             },
             ..Default::default()
         };
