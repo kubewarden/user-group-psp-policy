@@ -10,42 +10,43 @@ This policy is used to control users and groups in containers.
 
 ## Settings
 
-
 The policy has three settings:
 
-* `run_as_user`: Controls which user ID the containers are run with. As well as the user in the securityContext from PodSpec.
-* `run_as_group`:  Controls which primary group ID the containers are run with. As well as the group in the securityContext from PodSpec.
-* `supplemental_groups`: Controls which group IDs containers add.
-* `validate_container_image_configuration`: A boolean value that allows the policy to validate the `USER` directive in the container image configuration. The default value is `false`.
-> [!WARNING]  
-> When container image validation is enabled, the policy performs a host
-> capability call to access the container image metadata stored in the
-> registry. This involves network access and can slow down the policy
-> evaluation in a cold execution when this data is not stored in the cache.
-> Therefore, the policy server can interrupt the evaluation if it takes too
-> long to complete. This is controlled by a configuration in the policy server.
-> If necessary,
-> [adjust](https://docs.kubewarden.io/reference/policy-evaluation-timeout#configuration)
-> to avoid the interruption of the policy evaluation.
+- `run_as_user`: Controls which user ID the containers are run with. As well as the user in the securityContext from PodSpec.
+- `run_as_group`: Controls which primary group ID the containers are run with. As well as the group in the securityContext from PodSpec.
+- `supplemental_groups`: Controls which group IDs containers add.
+- `validate_container_image_configuration`: A boolean value that allows the policy to validate the `USER` directive in the container image configuration. The default value is `false`.
 
+> [!WARNING]  
+> When container image validation is enabled, the policy fetches the container
+> image metadata from the container registry.
+> This involves network access that affects the policy evaluation time. When the network
+> request is particularly slow, the policy evaluation will be interrupted by the Policy Server
+> and the request will be rejected.
+> The timeout can occur on the first request or whenever the cached response
+> is expired.
+>
+> If necessary, the policy evaluation interruption can be turned off or tuned to accommodate
+> slow network responses. For more details, check [this section](https://docs.kubewarden.io/reference/policy-evaluation-timeout#configuration)
+> of the Kubewarden documentation.
 
 All three settings have no defaults, just like the deprecated PSP (also, they would get used if `mutating` is `true`).
 
 All three settings are JSON objects composed by three attributes: `rule`, `ranges` and `overwrite`. The `rule` attribute defines
 the strategy used by the policy to enforce users and groups used in containers. The available strategies are:
 
-* `run_as_user`:
-	* `MustRunAs` - Requires at least one range to be specified. Uses the minimum value of the first range as the default. Validates against all ranges.
-	* `MustRunAsNonRoot` - Requires that the pod be submitted with a non-zero `runAsUser` or have the `USER` directive defined (using a numeric UID) in the image. Pods which have specified neither `runAsNonRoot` nor `runAsUser` settings will be mutated to set `runAsNonRoot=true`, thus requiring a defined non-zero numeric `USER` directive in the container. No default provided.
-	* `RunAsAny` - No default provided. Allows any `runAsUser` to be specified.
-* `run_as_group`:
-	* `MustRunAs` - Requires at least one range to be specified. Uses the minimum value of the first range as the default. Validates against all ranges.
-	* `MayRunAs` - Does not require that `RunAsGroup` be specified. However, when `RunAsGroup` is specified, they have to fall in the defined range.
-	* `RunAsAny` - No default provided. Allows any `runAsGroup` to be specified.
-* `supplemental_groups`:
-	* `MustRunAs` - Requires at least one range to be specified. Uses the minimum value of the first range as the default. Validates against all ranges.
-	* `MayRunAs` - Requires at least one range to be specified. Allows `supplementalGroups` to be left unset without providing a default. Validates against all ranges if `supplementalGroups` is set.
-	* `RunAsAny` - No default provided. Allows any `supplementalGroups` to be specified
+- `run_as_user`:
+  - `MustRunAs` - Requires at least one range to be specified. Uses the minimum value of the first range as the default. Validates against all ranges.
+  - `MustRunAsNonRoot` - Requires that the pod be submitted with a non-zero `runAsUser` or have the `USER` directive defined (using a numeric UID) in the image. Pods which have specified neither `runAsNonRoot` nor `runAsUser` settings will be mutated to set `runAsNonRoot=true`, thus requiring a defined non-zero numeric `USER` directive in the container. No default provided.
+  - `RunAsAny` - No default provided. Allows any `runAsUser` to be specified.
+- `run_as_group`:
+  - `MustRunAs` - Requires at least one range to be specified. Uses the minimum value of the first range as the default. Validates against all ranges.
+  - `MayRunAs` - Does not require that `RunAsGroup` be specified. However, when `RunAsGroup` is specified, they have to fall in the defined range.
+  - `RunAsAny` - No default provided. Allows any `runAsGroup` to be specified.
+- `supplemental_groups`:
+  - `MustRunAs` - Requires at least one range to be specified. Uses the minimum value of the first range as the default. Validates against all ranges.
+  - `MayRunAs` - Requires at least one range to be specified. Allows `supplementalGroups` to be left unset without providing a default. Validates against all ranges if `supplementalGroups` is set.
+  - `RunAsAny` - No default provided. Allows any `supplementalGroups` to be specified
 
 The `ranges` is a list of JSON objects with two attributes: `min` and `max`. Each range object define the user/group ID range used by the rule.
 
@@ -58,12 +59,12 @@ The `validate_container_image_configuration` configuration in the policy
 settings is a boolean value that allows the policy to validate the `USER`
 directive in the container image. The default value is `false`. If set to
 `true`, the policy will enforce the same rules as `MustRunAs` and
-`MustRunAsNonRoot`  for the `run_as_user`. And checks if the group of the
+`MustRunAsNonRoot` for the `run_as_user`. And checks if the group of the
 `USER` directive is in the `run_as_group` range.
 
 > [!NOTE]  
 > Container image validation is skipped if the container image is a Windows container.
-> And user and groups names are not allowed. The user and group should be defined 
+> And user and groups names are not allowed. The user and group should be defined
 > as uid and gid.
 
 This policy can inspect Pod resources, but can also operate against "higher order"
@@ -87,8 +88,6 @@ There are pros and cons to both approaches:
   will get immediate feedback about the rejections. However, there's still the
   chance that some non compliant pods are created by another high level resource
   (be it native to Kubernetes, or a CRD).
-
-
 
 ### Examples
 
@@ -122,7 +121,7 @@ To enforce that user and groups must be set and it should be in the defined rang
       }
     ]
   },
-  "supplemental_groups":{
+  "supplemental_groups": {
     "rule": "MustRunAs",
     "ranges": [
       {
@@ -148,7 +147,7 @@ To allow any user and group:
   "run_as_group": {
     "rule": "RunAsAny"
   },
-  "supplemental_groups":{
+  "supplemental_groups": {
     "rule": "RunAsAny"
   }
 }
@@ -164,7 +163,7 @@ To force running the container with non root user but any group:
   "run_as_group": {
     "rule": "RunAsAny"
   },
-  "supplemental_groups":{
+  "supplemental_groups": {
     "rule": "RunAsAny"
   }
 }
@@ -190,7 +189,7 @@ To enforce a group when the container has some group defined
       }
     ]
   },
-  "supplemental_groups":{
+  "supplemental_groups": {
     "rule": "MayRunAs",
     "ranges": [
       {
@@ -228,17 +227,17 @@ set `overwrite` as `true`:
       {
         "min": 1000,
         "max": 1999
-      },
+      }
     ]
   },
-  "supplemental_groups":{
+  "supplemental_groups": {
     "rule": "MustRunAs",
     "overwrite": true,
     "ranges": [
       {
         "min": 1000,
         "max": 1999
-      },
+      }
     ]
   }
 }
