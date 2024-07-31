@@ -297,19 +297,21 @@ fn enforce_container_security_policies(
     container: &mut apicore::Container,
     validation_request: &ValidationRequest<Settings>,
 ) -> Result<bool> {
-    let mut container_image_config = None;
-    if validation_request
+    let container_image_config = if validation_request
         .settings
         .validate_container_image_configuration
     {
         let container_image = container.image.as_ref().unwrap();
         let response = get_manifest_and_config(container_image)?;
         if *response.config.os() != oci_spec::image::Os::Windows {
-            container_image_config = Some(response.config);
+            Some(response.config)
         } else {
             warn!(LOG_DRAIN, "Windows containers are not supported by the policy. Skipping container image configuration user validation."; "image" => &container_image);
+            None
         }
-    }
+    } else {
+        None
+    };
 
     let mut mutated: bool = false;
     let mutate_request = enforce_run_as_user_rule(
@@ -1446,7 +1448,6 @@ mod tests {
                         max: 2000,
                     }],
                     overwrite: true,
-                    ..Default::default()
                 },
                 run_as_group: RuleStrategy {
                     rule: Rule::RunAsAny,
@@ -1547,7 +1548,6 @@ mod tests {
                         },
                     ],
                     overwrite: true,
-                    ..Default::default()
                 },
                 ..Default::default()
             },
@@ -1596,7 +1596,6 @@ mod tests {
                         max: 4000,
                     }],
                     overwrite: true,
-                    ..Default::default()
                 },
                 ..Default::default()
             },
@@ -1635,7 +1634,6 @@ mod tests {
                         },
                     ],
                     overwrite: true,
-                    ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
                     rule: Rule::RunAsAny,
@@ -1701,7 +1699,6 @@ mod tests {
                         },
                     ],
                     overwrite: true,
-                    ..Default::default()
                 },
                 supplemental_groups: RuleStrategy {
                     rule: Rule::RunAsAny,
@@ -1735,7 +1732,6 @@ mod tests {
                         max: 2000,
                     }],
                     overwrite: true,
-                    ..Default::default()
                 },
                 run_as_group: RuleStrategy {
                     rule: Rule::RunAsAny,
@@ -2501,7 +2497,7 @@ mod tests {
                 assert!(
                     result.is_ok(),
                     "Expected success but got error: {}",
-                    result.expect_err("Cannot get error").to_string()
+                    result.expect_err("Cannot get error")
                 );
             }
         }
@@ -2589,7 +2585,7 @@ mod tests {
                 assert!(
                     result.is_ok(),
                     "Expected success but got error: {}",
-                    result.expect_err("Cannot get error").to_string()
+                    result.expect_err("Cannot get error")
                 );
             }
         }
