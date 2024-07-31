@@ -1,7 +1,10 @@
 [package]
 name = "user-group-psp"
-version = "0.6.1"
-authors = ["Kubewarden developers <cncf-kubewarden-maintainers@lists.cncf.io>", "José Guilherme Vanz <jguilhermevanz@suse.com>"]
+version = "0.6.2"
+authors = [
+  "Kubewarden developers <cncf-kubewarden-maintainers@lists.cncf.io>",
+  "José Guilherme Vanz <jguilhermevanz@suse.com>",
+]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
