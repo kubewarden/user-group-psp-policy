@@ -24,4 +24,4 @@ oci-spec = "0.8"
 
 [dev-dependencies]
 jsonpath_lib = "0.3.0"
-rstest = "0.25.0"
+rstest = "0.26.0"
