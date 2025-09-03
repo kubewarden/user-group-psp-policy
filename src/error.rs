@@ -20,4 +20,10 @@ pub enum ValidationError {
     ImageConfigUserIdCannotBeRoot,
     #[error("Group ID defined in the container image is outside defined ranges")]
     ImageConfigGroupIdOutsideRanges,
+    #[error("Missing user ID")]
+    MissingUserId,
+    #[error("Missing group ID")]
+    MissingGroupId,
+    #[error("Missing supplemental group ID")]
+    MissingSupplementalGroupId,
 }

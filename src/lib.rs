@@ -136,7 +136,8 @@ where
                 }
             }
             if validation_request.settings.run_as_user.overwrite
-                || security_context.run_as_user().is_none()
+                || (security_context.run_as_user().is_none()
+                    && !validation_request.settings.validate_only)
             {
                 let default_user_id = validation_request.settings.run_as_user.ranges[0].min;
                 security_context.set_run_as_user(Some(default_user_id));
@@ -146,6 +147,8 @@ where
                 if !validation_request.settings.run_as_user.is_valid_id(user_id) {
                     return Err(ValidationError::UserIdOutsideRanges);
                 }
+            } else if validation_request.settings.validate_only {
+                return Err(ValidationError::MissingUserId);
             }
         }
         Rule::MustRunAsNonRoot => {
@@ -158,13 +161,17 @@ where
                 if !run_as_non_root {
                     return Err(ValidationError::ShouldRunAsNonRoot);
                 }
+            } else if validation_request.settings.validate_only {
+                return Err(ValidationError::ShouldRunAsNonRoot);
             }
             if let Some(user_id) = security_context.run_as_user() {
                 if user_id == 0 {
                     return Err(ValidationError::CannotUseRootUserId);
                 }
             }
-            security_context.set_run_as_non_root(Some(true));
+            if !validation_request.settings.validate_only {
+                security_context.set_run_as_non_root(Some(true));
+            }
             return Ok(Some(security_context));
         }
         _ => {}
@@ -205,7 +212,8 @@ where
         Rule::MustRunAs => {
             enforce_container_image_group(validation_request, container_image_config)?;
             if validation_request.settings.run_as_group.overwrite
-                || security_context.run_as_group().is_none()
+                || (security_context.run_as_group().is_none()
+                    && !validation_request.settings.validate_only)
             {
                 let default_group_id = validation_request.settings.run_as_group.ranges[0].min;
                 security_context.set_run_as_group(Some(default_group_id));
@@ -219,6 +227,8 @@ where
                 {
                     return Err(ValidationError::GroupIdOutsideRanges);
                 }
+            } else if validation_request.settings.validate_only {
+                return Err(ValidationError::MissingGroupId);
             }
         }
         Rule::MayRunAs => {
@@ -246,7 +256,8 @@ fn enforce_supplemental_groups(
     match validation_request.settings.supplemental_groups.rule {
         Rule::MustRunAs => {
             if validation_request.settings.supplemental_groups.overwrite
-                || security_context.supplemental_groups.is_none()
+                || (security_context.supplemental_groups.is_none()
+                    && !validation_request.settings.validate_only)
             {
                 let default_group_id =
                     validation_request.settings.supplemental_groups.ranges[0].min;
@@ -263,6 +274,8 @@ fn enforce_supplemental_groups(
                         return Err(ValidationError::GroupIdOutsideRanges);
                     }
                 }
+            } else if validation_request.settings.validate_only {
+                return Err(ValidationError::MissingSupplementalGroupId);
             }
         }
         Rule::MayRunAs => {
@@ -569,55 +582,84 @@ mod tests {
         Some(vec![ 1600, 2600 ]),
         get_may_run_as_rule(false),
         None,
-        None
+        None,
+        false
     )]
     #[case::may_run_as_supplemental_group_id_outside_range(
         Some(vec![999, 4001]),
         get_may_run_as_rule(false),
         Some(ValidationError::GroupIdOutsideRanges),
-        None
+        None,
+        false
     )]
-    #[case::may_run_as_supplemental_group_missing(None, get_may_run_as_rule(false), None, None)]
+    #[case::may_run_as_supplemental_group_missing(
+        None,
+        get_may_run_as_rule(false),
+        None,
+        None,
+        false
+    )]
     #[case::must_run_as_supplemental_group_id_missing(
         None,
         get_must_run_as_rule(false),
         None,
-        Some(get_pod_security_context_expected_mutation())
+        Some(get_pod_security_context_expected_mutation()),
+        false
+    )]
+    #[case::must_run_as_supplemental_group_id_is_missing_validate_only(
+        None,
+        get_must_run_as_rule(false),
+        Some(ValidationError::MissingSupplementalGroupId),
+        None,
+        true
     )]
     #[case::must_run_as_supplemental_group_id_inside_ranges(
         Some(vec![1600, 2600]),
         get_must_run_as_rule(false),
         None,
-        None
+        None,
+        false
     )]
     #[case::must_run_as_supplemental_group_id_outside_ranges(
         Some(vec![9000]),
         get_must_run_as_rule(false),
         Some(ValidationError::GroupIdOutsideRanges),
-        None
+        None,
+        false
     )]
     #[case::must_run_as_supplemental_group_inside_ranges_overwrite(
         Some(vec![1600, 2600]),
         get_must_run_as_rule(true),
         None,
-        Some(get_pod_security_context_expected_mutation())
+        Some(get_pod_security_context_expected_mutation()),
+        false
+    )]
+    #[case::must_run_as_supplemental_group_inside_range_overwrite_and_validate_only(
+        Some(vec![1600, 2600]),
+        get_must_run_as_rule(true),
+        None,
+        Some(get_pod_security_context_expected_mutation()),
+        true
     )]
     #[case::may_run_as_supplemental_group_inside_range_overwrite(
         Some(vec![1600, 2600]),
         get_may_run_as_rule(true),
         None,
-        None
+        None,
+        false
     )]
     fn test_supplemental_group_rules(
         #[case] supplemental_groups: Option<std::vec::Vec<i64>>,
         #[case] supplemental_groups_strategy: settings::RuleStrategy,
         #[case] expected_error: Option<ValidationError>,
         #[case] expected_mutation: Option<PodSecurityContext>,
+        #[case] validate_only: bool,
     ) {
         let security_context = Some(get_pod_security_context(supplemental_groups));
         let validation_request = &ValidationRequest {
             settings: Settings {
                 supplemental_groups: supplemental_groups_strategy,
+                validate_only,
                 ..Default::default()
             },
             request: KubernetesAdmissionRequest::default(),
@@ -632,52 +674,88 @@ mod tests {
     }
 
     #[rstest]
-    #[case::must_run_as_group_id_inside_ranges(Some(1500), get_must_run_as_rule(false), None, None)]
+    #[case::must_run_as_group_id_inside_ranges(
+        Some(1500),
+        get_must_run_as_rule(false),
+        None,
+        None,
+        false
+    )]
     #[case::must_run_as_missing_group(
         None,
         get_must_run_as_rule(false),
         None,
-        Some(get_security_context_expected_mutation_for_group_must_run_as())
+        Some(get_security_context_expected_mutation_for_group_must_run_as()),
+        false
+    )]
+    #[case::must_run_as_missing_group_validation_mode(
+        None,
+        get_must_run_as_rule(false),
+        Some(ValidationError::MissingGroupId),
+        None,
+        true
     )]
     #[case::must_run_as_group_outside_ranges(
         Some(500),
         get_must_run_as_rule(false),
         Some(ValidationError::GroupIdOutsideRanges),
-        None
+        None,
+        false
     )]
-    #[case::run_as_any_missing_group(None, get_run_as_any_rule(), None, None)]
+    #[case::run_as_any_missing_group(None, get_run_as_any_rule(), None, None, false)]
     #[case::must_run_as_group_id_inside_ranges_overwrite(
         Some(2000),
         get_must_run_as_rule(true),
         None,
-        Some(get_security_context_expected_mutation_for_group_must_run_as())
+        Some(get_security_context_expected_mutation_for_group_must_run_as()),
+        false
     )]
-    #[case::may_run_as_group_id_inside_ranges(Some(1500), get_may_run_as_rule(false), None, None)]
+    #[case::may_run_as_group_id_inside_ranges(
+        Some(1500),
+        get_may_run_as_rule(false),
+        None,
+        None,
+        false
+    )]
     #[case::may_run_as_group_id_outside_ranges(
         Some(500),
         get_may_run_as_rule(false),
         Some(ValidationError::GroupIdOutsideRanges),
-        None
+        None,
+        false
     )]
-    #[case::may_run_as_missing_group_id(None, get_may_run_as_rule(false), None, None)]
-    #[case::may_run_as_group_id_and_overwrite(Some(1500), get_may_run_as_rule(true), None, None)]
+    #[case::must_run_as_group_id_inside_ranges_overwrite_validation_only(
+        Some(2000),
+        get_must_run_as_rule(true),
+        None,
+        Some(get_security_context_expected_mutation_for_group_must_run_as()),
+        true
+    )]
+    #[case::may_run_as_missing_group_id(None, get_may_run_as_rule(false), None, None, false)]
+    #[case::may_run_as_group_id_and_overwrite(
+        Some(1500),
+        get_may_run_as_rule(true),
+        None,
+        None,
+        false
+    )]
     fn test_group_rules(
         #[case] run_as_group: Option<i64>,
         #[case] run_as_group_strategy: settings::RuleStrategy,
         #[case] expected_error: Option<ValidationError>,
         #[case] expected_mutation: Option<SecurityContext>,
+        #[case] validate_only: bool,
     ) {
         let security_context = Some(get_security_context_with_no_user(run_as_group));
         let validation_request = &ValidationRequest {
             settings: Settings {
                 run_as_group: run_as_group_strategy,
+                validate_only,
                 ..Default::default()
             },
             request: KubernetesAdmissionRequest::default(),
         };
-        let container_image_config = None;
-        let result =
-            enforce_run_as_group(security_context, validation_request, container_image_config);
+        let result = enforce_run_as_group(security_context, validation_request, None);
         if let Some(expected_error) = expected_error {
             assert_eq!(result.expect_err("Missing error"), expected_error);
         } else {
@@ -692,57 +770,97 @@ mod tests {
         None,
         get_must_run_as_rule(false),
         None,
-        None
+        None,
+        false
     )]
     #[case::must_run_as_with_user_outside_ranges(
         Some(500),
         None,
         get_must_run_as_rule(false),
         Some(ValidationError::UserIdOutsideRanges),
-        None
+        None,
+        false
     )]
     #[case::must_run_as_with_missing_user_id(
         None,
         None,
         get_must_run_as_rule(false),
         None,
-        Some(get_security_context_expected_mutation_must_run_as())
+        Some(get_security_context_expected_mutation_must_run_as()),
+        false
     )]
-    #[case::run_as_any_with_missing_user_id(None, None, get_run_as_any_rule(), None, None)]
+    #[case::must_run_as_with_missing_user_id_in_validation_mode(
+        None,
+        None,
+        get_must_run_as_rule(false),
+        Some(ValidationError::MissingUserId),
+        None,
+        true
+    )]
+    #[case::run_as_any_with_missing_user_id(None, None, get_run_as_any_rule(), None, None, false)]
     #[case::must_run_as_with_user_and_overwrite_is_set(
         Some(2000),
         None,
         get_must_run_as_rule(true),
         None,
-        Some(get_security_context_expected_mutation_must_run_as())
+        Some(get_security_context_expected_mutation_must_run_as()),
+        false
+    )]
+    #[case::must_run_as_with_user_and_overwrite_is_set_in_validation_mode(
+        Some(2000),
+        None,
+        get_must_run_as_rule(true),
+        None,
+        Some(get_security_context_expected_mutation_must_run_as()),
+        true
     )]
     #[case::must_run_as_non_root_with_run_as_non_root_set_false(
         Some(1000),
         Some(false),
         get_must_run_as_non_root_rule(),
         Some(ValidationError::ShouldRunAsNonRoot),
-        None
+        None,
+        false
     )]
     #[case::must_run_as_non_root_with_missing_run_as_non_root(
         None,
         None,
         get_must_run_as_non_root_rule(),
         None,
-        Some(get_security_context_expected_mutation_must_run_as_non_root())
+        Some(get_security_context_expected_mutation_must_run_as_non_root()),
+        false
+    )]
+    #[case::must_run_as_non_root_with_missing_run_as_non_root_and_validation_mode(
+        None,
+        None,
+        get_must_run_as_non_root_rule(),
+        Some(ValidationError::ShouldRunAsNonRoot),
+        None,
+        true
     )]
     #[case::must_run_as_non_root_with_using_root_user(
         Some(0),
         Some(true),
         get_must_run_as_non_root_rule(),
         Some(ValidationError::CannotUseRootUserId),
-        None
+        None,
+        false
     )]
     #[case::must_run_as_with_user_id_and_overwrite_is_true(
         Some(1600),
         None,
         get_must_run_as_rule(true),
         None,
-        Some(get_security_context_expected_mutation_must_run_as())
+        Some(get_security_context_expected_mutation_must_run_as()),
+        false
+    )]
+    #[case::must_run_as_with_user_id_and_overwrite_is_true_and_validation_mode(
+        Some(1600),
+        None,
+        get_must_run_as_rule(true),
+        None,
+        Some(get_security_context_expected_mutation_must_run_as()),
+        true
     )]
     fn test_user_rules(
         #[case] run_as_user: Option<i64>,
@@ -750,18 +868,18 @@ mod tests {
         #[case] run_as_user_strategy: settings::RuleStrategy,
         #[case] expected_error: Option<ValidationError>,
         #[case] expected_mutation: Option<SecurityContext>,
+        #[case] validate_only: bool,
     ) {
         let security_context = Some(get_security_context(run_as_user, run_as_non_root));
         let validation_request = &ValidationRequest {
             settings: Settings {
                 run_as_user: run_as_user_strategy,
+                validate_only,
                 ..Default::default()
             },
             request: KubernetesAdmissionRequest::default(),
         };
-        let container_image_config = None;
-        let result =
-            enforce_run_as_user_rule(security_context, validation_request, container_image_config);
+        let result = enforce_run_as_user_rule(security_context, validation_request, None);
         if let Some(expected_error) = expected_error {
             assert_eq!(result.expect_err("Missing error"), expected_error);
         } else {

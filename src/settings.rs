@@ -1,6 +1,8 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 
+const VALIDATION_MODE_OVERWRITE_ERROR: &str = "validate_only cannot be true when overwrite is true";
+
 #[derive(Serialize, Deserialize, Default, Debug)]
 #[serde(default)]
 pub(crate) struct IDRange {
@@ -118,6 +120,7 @@ pub(crate) struct Settings {
     pub run_as_group: RuleStrategy,
     pub supplemental_groups: RuleStrategy,
     pub validate_container_image_configuration: bool,
+    pub validate_only: bool,
 }
 
 impl kubewarden::settings::Validatable for Settings {
@@ -153,6 +156,13 @@ impl kubewarden::settings::Validatable for Settings {
             Err(error) => {
                 return Err(error.to_string());
             }
+        }
+        if self.validate_only
+            && (self.run_as_user.overwrite
+                || self.run_as_group.overwrite
+                || self.supplemental_groups.overwrite)
+        {
+            return Err(VALIDATION_MODE_OVERWRITE_ERROR.to_string());
         }
         Ok(())
     }
@@ -717,5 +727,38 @@ mod tests {
         );
 
         Ok(())
+    }
+    #[test]
+    fn overwrite_and_validation_mode_settings_test() {
+        let settings = Settings {
+            validate_only: true,
+            run_as_user: RuleStrategy {
+                rule: Rule::MustRunAs,
+                ranges: vec![IDRange {
+                    min: 1000,
+                    max: 1010,
+                }],
+                overwrite: true,
+            },
+            run_as_group: RuleStrategy {
+                rule: Rule::MustRunAs,
+                ranges: vec![IDRange {
+                    min: 1000,
+                    max: 1010,
+                }],
+                overwrite: true,
+            },
+            supplemental_groups: RuleStrategy {
+                rule: Rule::MustRunAs,
+                ranges: vec![IDRange {
+                    min: 1000,
+                    max: 1010,
+                }],
+                overwrite: true,
+            },
+            ..Default::default()
+        };
+        let error = settings.validate().expect_err("Expect error");
+        assert_eq!(error, VALIDATION_MODE_OVERWRITE_ERROR);
     }
 }
