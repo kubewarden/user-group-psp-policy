@@ -29,10 +29,19 @@ pub extern "C" fn wapc_init() {
     register_function("protocol_version", protocol_version_guest);
 }
 
-const MUST_RUN_AS_USER_OUTSIDE_RANGES: &str = "User ID outside defined ranges";
-const GROUP_OUTSIDE_RANGES_ERROR: &str = "Group ID is outside defined ranges";
+const USER_ID_OUTSIDE_RANGES_ERROR: &str = "User ID outside defined ranges";
+const GROUP_ID_OUTSIDE_RANGES_ERROR: &str = "Group ID is outside defined ranges";
 const SHOULD_RUN_AS_NON_ROOT_ERROR: &str = "RunAsNonRoot should be set to true";
-const CANNOT_USE_ROOT_USER_ID: &str = "Invalid user ID: cannot run container with root ID (0)";
+const CANNOT_USE_ROOT_USER_ID_ERROR: &str =
+    "Invalid user ID: cannot run container with root ID (0)";
+const IMAGE_CONFIG_GROUP_ID_ERROR: &str = "Invalid group ID in the container image configuration";
+const IMAGE_CONFIG_USER_ID_ERROR: &str = "Invalid user ID in the container image configuration";
+const IMAGE_CONFIG_USER_ID_OUTSIDE_RANGES_ERROR: &str =
+    "User ID defined in the container image is outside defined ranges";
+const IMAGE_CONFIG_USER_ID_CANNOT_BE_ROOT_ERROR: &str =
+    "User ID defined in the container image cannot be root ID (0)";
+const IMAGE_CONFIG_GROUP_ID_OUTSIDE_RANGES_ERROR: &str =
+    "Group ID defined in the container image is outside defined ranges";
 
 trait GenericSecurityContext {
     fn run_as_user(&self) -> Option<i64>;
@@ -107,7 +116,8 @@ fn get_user_group_uid_from_image_configuration(
                         return Ok((Some(user_id), Some(group_id)));
                     } else {
                         return Err(anyhow!(
-                            "Invalid group ID in the container image configuration: \"{}\"",
+                            "{}: \"{}\"",
+                            IMAGE_CONFIG_GROUP_ID_ERROR,
                             user_group[1]
                         ));
                     }
@@ -115,7 +125,8 @@ fn get_user_group_uid_from_image_configuration(
                 return Ok((Some(user_id), None));
             } else {
                 return Err(anyhow!(
-                    "Invalid user ID in the container image configuration: \"{}\"",
+                    "{}: \"{}\"",
+                    IMAGE_CONFIG_USER_ID_ERROR,
                     user_group[0]
                 ));
             }
@@ -139,9 +150,7 @@ where
         Rule::MustRunAs => {
             if let (Some(user_id), _) = container_user_group_uid {
                 if !validation_request.settings.run_as_user.is_valid_id(user_id) {
-                    return Err(anyhow!(
-                        "User ID defined in the container image is outside defined ranges"
-                    ));
+                    return Err(anyhow!(IMAGE_CONFIG_USER_ID_OUTSIDE_RANGES_ERROR));
                 }
             }
             if validation_request.settings.run_as_user.overwrite
@@ -153,16 +162,14 @@ where
             }
             if let Some(user_id) = security_context.run_as_user() {
                 if !validation_request.settings.run_as_user.is_valid_id(user_id) {
-                    return Err(anyhow!(MUST_RUN_AS_USER_OUTSIDE_RANGES));
+                    return Err(anyhow!(USER_ID_OUTSIDE_RANGES_ERROR));
                 }
             }
         }
         Rule::MustRunAsNonRoot => {
             if let (Some(user_id), _) = container_user_group_uid {
                 if user_id == 0 {
-                    return Err(anyhow!(
-                        "User ID defined in the container image cannot be root ID (0)"
-                    ));
+                    return Err(anyhow!(IMAGE_CONFIG_USER_ID_CANNOT_BE_ROOT_ERROR));
                 }
             }
             if let Some(run_as_non_root) = security_context.run_as_non_root() {
@@ -172,7 +179,7 @@ where
             }
             if let Some(user_id) = security_context.run_as_user() {
                 if user_id == 0 {
-                    return Err(anyhow!(CANNOT_USE_ROOT_USER_ID));
+                    return Err(anyhow!(CANNOT_USE_ROOT_USER_ID_ERROR));
                 }
             }
             security_context.set_run_as_non_root(Some(true));
@@ -197,9 +204,7 @@ where
             .run_as_group
             .is_valid_id(group_id)
         {
-            return Err(anyhow!(
-                "Group ID defined in the container image is outside defined ranges"
-            ));
+            return Err(anyhow!(IMAGE_CONFIG_GROUP_ID_OUTSIDE_RANGES_ERROR,));
         }
     }
     Ok(())
@@ -230,7 +235,7 @@ where
                     .run_as_group
                     .is_valid_id(group_id)
                 {
-                    return Err(anyhow!(GROUP_OUTSIDE_RANGES_ERROR));
+                    return Err(anyhow!(GROUP_ID_OUTSIDE_RANGES_ERROR));
                 }
             }
         }
@@ -242,7 +247,7 @@ where
                     .run_as_group
                     .is_valid_id(group_id)
                 {
-                    return Err(anyhow!(GROUP_OUTSIDE_RANGES_ERROR));
+                    return Err(anyhow!(GROUP_ID_OUTSIDE_RANGES_ERROR));
                 }
             }
         }
@@ -273,7 +278,7 @@ fn enforce_supplemental_groups(
                         .supplemental_groups
                         .is_valid_id(group_id)
                     {
-                        return Err(anyhow!(GROUP_OUTSIDE_RANGES_ERROR));
+                        return Err(anyhow!(GROUP_ID_OUTSIDE_RANGES_ERROR));
                     }
                 }
             }
@@ -286,7 +291,7 @@ fn enforce_supplemental_groups(
                         .supplemental_groups
                         .is_valid_id(group_id)
                     {
-                        return Err(anyhow!(GROUP_OUTSIDE_RANGES_ERROR));
+                        return Err(anyhow!(GROUP_ID_OUTSIDE_RANGES_ERROR));
                     }
                 }
             }
@@ -615,7 +620,7 @@ mod tests {
     #[case::may_run_as_should_reject_request_if_supplemental_group_is_invalid(
         Some(vec![999, 4001]),
         get_may_run_as_rule(),
-        Some(GROUP_OUTSIDE_RANGES_ERROR),
+        Some(GROUP_ID_OUTSIDE_RANGES_ERROR),
         None
     )]
     #[case::may_run_as_should_accept_request_if_supplemental_group_is_not_defined(
@@ -639,7 +644,7 @@ mod tests {
     #[case::must_run_as_should_reject_when_supplemental_group_id_is_invalid(
         Some(vec![9000]),
         get_must_run_as_rule(),
-        Some(GROUP_OUTSIDE_RANGES_ERROR),
+        Some(GROUP_ID_OUTSIDE_RANGES_ERROR),
         None
     )]
     #[case::must_run_as_should_mutate_supplemental_group_if_overwrite_is_set(
@@ -688,7 +693,7 @@ mod tests {
     #[case::must_run_as_should_reject_when_group_id_is_invalid(
         Some(500),
         get_must_run_as_rule(),
-        Some(GROUP_OUTSIDE_RANGES_ERROR),
+        Some(GROUP_ID_OUTSIDE_RANGES_ERROR),
         None
     )]
     #[case::run_as_any_should_not_mutate(None, get_run_as_any_rule(), None, None)]
@@ -707,7 +712,7 @@ mod tests {
     #[case::may_run_as_should_reject_request_if_run_as_group_value_is_invalid(
         Some(500),
         get_may_run_as_rule(),
-        Some(GROUP_OUTSIDE_RANGES_ERROR),
+        Some(GROUP_ID_OUTSIDE_RANGES_ERROR),
         None
     )]
     #[case::may_run_as_should_accept_request_if_run_as_group_is_not_defined(
@@ -759,7 +764,7 @@ mod tests {
         Some(500),
         None,
         get_must_run_as_rule(),
-        Some(MUST_RUN_AS_USER_OUTSIDE_RANGES),
+        Some(USER_ID_OUTSIDE_RANGES_ERROR),
         None
     )]
     #[case::must_run_as_should_mutate_when_no_user_id_is_defined_adding_first_range_min_value(
@@ -795,7 +800,7 @@ mod tests {
         Some(0),
         Some(true),
         get_must_run_as_non_root_rule(),
-        Some(CANNOT_USE_ROOT_USER_ID),
+        Some(CANNOT_USE_ROOT_USER_ID_ERROR),
         None
     )]
     #[case::must_run_as_should_mutate_user_id_when_overwrite_is_true(
