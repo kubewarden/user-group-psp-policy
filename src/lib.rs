@@ -29,6 +29,11 @@ pub extern "C" fn wapc_init() {
     register_function("protocol_version", protocol_version_guest);
 }
 
+const MUST_RUN_AS_USER_OUTSIDE_RANGES: &str = "User ID outside defined ranges";
+const GROUP_OUTSIDE_RANGES_ERROR: &str = "Group ID is outside defined ranges";
+const SHOULD_RUN_AS_NON_ROOT_ERROR: &str = "RunAsNonRoot should be set to true";
+const CANNOT_USE_ROOT_USER_ID: &str = "Invalid user ID: cannot run container with root ID (0)";
+
 trait GenericSecurityContext {
     fn run_as_user(&self) -> Option<i64>;
     fn set_run_as_user(&mut self, run_as_user: Option<i64>);
@@ -148,7 +153,7 @@ where
             }
             if let Some(user_id) = security_context.run_as_user() {
                 if !validation_request.settings.run_as_user.is_valid_id(user_id) {
-                    return Err(anyhow!("User ID outside defined ranges"));
+                    return Err(anyhow!(MUST_RUN_AS_USER_OUTSIDE_RANGES));
                 }
             }
         }
@@ -162,14 +167,12 @@ where
             }
             if let Some(run_as_non_root) = security_context.run_as_non_root() {
                 if !run_as_non_root {
-                    return Err(anyhow!("RunAsNonRoot should be set to true"));
+                    return Err(anyhow!(SHOULD_RUN_AS_NON_ROOT_ERROR));
                 }
             }
             if let Some(user_id) = security_context.run_as_user() {
                 if user_id == 0 {
-                    return Err(anyhow!(
-                        "Invalid user ID: cannot run container with root ID (0)"
-                    ));
+                    return Err(anyhow!(CANNOT_USE_ROOT_USER_ID));
                 }
             }
             security_context.set_run_as_non_root(Some(true));
@@ -227,7 +230,7 @@ where
                     .run_as_group
                     .is_valid_id(group_id)
                 {
-                    return Err(anyhow!("Group ID is outside defined ranges"));
+                    return Err(anyhow!(GROUP_OUTSIDE_RANGES_ERROR));
                 }
             }
         }
@@ -239,7 +242,7 @@ where
                     .run_as_group
                     .is_valid_id(group_id)
                 {
-                    return Err(anyhow!("Group ID is outside defined ranges"));
+                    return Err(anyhow!(GROUP_OUTSIDE_RANGES_ERROR));
                 }
             }
         }
@@ -270,7 +273,7 @@ fn enforce_supplemental_groups(
                         .supplemental_groups
                         .is_valid_id(group_id)
                     {
-                        return Err(anyhow!("Group ID is outside defined ranges"));
+                        return Err(anyhow!(GROUP_OUTSIDE_RANGES_ERROR));
                     }
                 }
             }
@@ -283,7 +286,7 @@ fn enforce_supplemental_groups(
                         .supplemental_groups
                         .is_valid_id(group_id)
                     {
-                        return Err(anyhow!("Group ID is outside defined ranges"));
+                        return Err(anyhow!(GROUP_OUTSIDE_RANGES_ERROR));
                     }
                 }
             }
@@ -450,551 +453,410 @@ fn validate(payload: &[u8]) -> CallResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use k8s_openapi::api::core::v1::PodSecurityContext;
     use k8s_openapi::api::core::v1::SecurityContext;
     use kubewarden::request::KubernetesAdmissionRequest;
+    use kubewarden::response::ValidationResponse;
     use rstest::rstest;
 
     use jsonpath_lib as jsonpath;
-    use kubewarden_policy_sdk::response::ValidationResponse;
-    use kubewarden_policy_sdk::test::Testcase;
     use oci_spec::image::{ConfigBuilder, ImageConfigurationBuilder};
     use settings::Settings;
     use settings::{IDRange, RuleStrategy};
 
-    #[test]
-    fn may_run_as_should_accept_request_if_supplemental_group_id_is_valid() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_valid_supplemental_group.json";
-        let tc = Testcase {
-            name: String::from(
-                "MayRunAs should accept request when valid SupplementalGroups value is set",
-            ),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
+    fn get_must_run_as_rule_with_overwrite() -> settings::RuleStrategy {
+        RuleStrategy {
+            rule: Rule::MustRunAs,
+            ranges: vec![
+                settings::IDRange {
+                    min: 1500,
+                    max: 2000,
                 },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
+                IDRange {
+                    min: 2500,
+                    max: 3000,
                 },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::MayRunAs,
-                    ranges: vec![IDRange {
-                        min: 1000,
-                        max: 4000,
-                    }],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "Request should not be mutated"
-        );
-        Ok(())
+            ],
+            overwrite: true,
+        }
     }
 
-    #[test]
-    fn may_run_as_should_reject_request_if_supplemental_group_is_invalid() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_invalid_supplemental_group.json";
-        let tc = Testcase {
-            name: String::from(
-                "MayRunAs should reject request when no SupplementalGroups value is invalid",
-            ),
-            fixture_file: String::from(request_file),
-            expected_validation_result: false,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
+    fn get_must_run_as_rule() -> settings::RuleStrategy {
+        RuleStrategy {
+            rule: Rule::MustRunAs,
+            ranges: vec![
+                settings::IDRange {
+                    min: 1500,
+                    max: 2000,
                 },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
+                IDRange {
+                    min: 2500,
+                    max: 3000,
                 },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::MayRunAs,
-                    ranges: vec![IDRange {
-                        min: 2000,
-                        max: 2500,
-                    }],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "Request should not be mutated"
-        );
-        Ok(())
+            ],
+            overwrite: false,
+        }
     }
 
-    #[test]
-    fn may_run_as_should_accept_request_if_supplemental_group_is_not_defined() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_must_run_as_with_no_value.json";
-        let tc = Testcase {
-            name: String::from(
-                "MayRunAs should accept request when no SupplementalGroups value is set",
-            ),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::MayRunAs,
-                    ranges: vec![IDRange {
-                        min: 2000,
-                        max: 2500,
-                    }],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "Request should not be mutated"
-        );
-        Ok(())
+    fn get_run_as_any_rule() -> settings::RuleStrategy {
+        RuleStrategy {
+            rule: Rule::RunAsAny,
+            ranges: vec![],
+            ..Default::default()
+        }
     }
 
-    #[test]
-    fn must_run_as_should_mutate_request_when_supplemental_group_id_is_not_defined(
-    ) -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_must_run_as_with_no_value.json";
-        let tc = Testcase {
-            name: String::from(
-                "'MustRunAs' should mutate request when supplemental group ID is missing",
-            ),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![
-                        IDRange {
-                            min: 1500,
-                            max: 2000,
-                        },
-                        IDRange {
-                            min: 2500,
-                            max: 3000,
-                        },
-                    ],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
+    fn get_may_run_as_rule() -> settings::RuleStrategy {
+        RuleStrategy {
+            rule: Rule::MayRunAs,
+            ranges: vec![IDRange {
+                min: 1000,
+                max: 4000,
+            }],
+            ..Default::default()
+        }
+    }
+
+    fn get_may_run_as_rule_with_overwrite() -> settings::RuleStrategy {
+        RuleStrategy {
+            rule: Rule::MayRunAs,
+            ranges: vec![IDRange {
+                min: 1000,
+                max: 4000,
+            }],
+            overwrite: true,
+        }
+    }
+
+    fn get_must_run_as_non_root_rule() -> settings::RuleStrategy {
+        RuleStrategy {
+            rule: Rule::MustRunAsNonRoot,
+            ranges: vec![],
+            ..Default::default()
+        }
+    }
+
+    fn get_pod_security_context_expected_mutation() -> PodSecurityContext {
+        get_pod_security_context(Some(vec![1500]))
+    }
+
+    fn get_pod_security_context(
+        supplemental_groups: Option<std::vec::Vec<i64>>,
+    ) -> PodSecurityContext {
+        PodSecurityContext {
+            supplemental_groups,
+            ..Default::default()
+        }
+    }
+
+    fn get_security_context(
+        run_as_user: Option<i64>,
+        run_as_non_root: Option<bool>,
+    ) -> SecurityContext {
+        SecurityContext {
+            run_as_user,
+            run_as_non_root,
+            ..Default::default()
+        }
+    }
+
+    fn get_security_context_with_no_user(run_as_group: Option<i64>) -> SecurityContext {
+        SecurityContext {
+            run_as_group,
+            ..Default::default()
+        }
+    }
+
+    fn get_security_context_expected_mutation_for_group_must_run_as() -> SecurityContext {
+        SecurityContext {
+            run_as_group: Some(1500),
+            ..Default::default()
+        }
+    }
+
+    fn get_security_context_expected_mutation_must_run_as() -> SecurityContext {
+        get_security_context(Some(1500), None)
+    }
+
+    fn get_security_context_expected_mutation_must_run_as_non_root() -> SecurityContext {
+        get_security_context(None, Some(true))
+    }
+
+    fn perform_validation_call(settings: Settings, request_file: &str) -> ValidationResponse {
+        let validation_request = ValidationRequest::<Settings> {
+            settings,
+            request: serde_json::from_slice(
+                std::fs::read(request_file)
+                    .expect("Cannot read fixture file")
+                    .as_slice(),
+            )
+            .expect("Cannot parse fixture file"),
         };
 
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_some(),
-            "MustRunAs should mutate request"
-        );
-        let supplemental_groups_json = jsonpath::select(
-            res.mutated_object.as_ref().unwrap(),
-            "$.spec.securityContext.supplementalGroups[*]",
+        serde_json::from_slice(
+            validate(
+                serde_json::to_vec(&validation_request)
+                    .expect("Cannot serialize validation request")
+                    .as_slice(),
+            )
+            .expect("The validate function failed.")
+            .as_slice(),
         )
-        .unwrap();
-        assert_eq!(
-            supplemental_groups_json,
-            vec![1500],
-            "MustRunAs should add the 'supplementalGroups' when it is not defined"
-        );
-        Ok(())
+        .expect("Cannot parse validation response")
     }
 
-    #[test]
-    fn must_run_as_should_accept_when_supplemental_group_id_is_valid() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_valid_supplemental_group.json";
-        let tc = Testcase {
-            name: String::from(
-                "'MustRunAs' should accept request when supplemental group ID is valid",
-            ),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
+    #[rstest]
+    #[case::may_run_as_should_accept_request_if_supplemental_group_id_is_valid(
+        Some(vec![ 1600, 2600 ]),
+        get_may_run_as_rule(),
+        None,
+        None
+    )]
+    #[case::may_run_as_should_reject_request_if_supplemental_group_is_invalid(
+        Some(vec![999, 4001]),
+        get_may_run_as_rule(),
+        Some(GROUP_OUTSIDE_RANGES_ERROR),
+        None
+    )]
+    #[case::may_run_as_should_accept_request_if_supplemental_group_is_not_defined(
+        None,
+        get_may_run_as_rule(),
+        None,
+        None
+    )]
+    #[case::must_run_as_should_mutate_request_when_supplemental_group_id_is_not_defined(
+        None,
+        get_must_run_as_rule(),
+        None,
+        Some(get_pod_security_context_expected_mutation())
+    )]
+    #[case::must_run_as_should_accept_when_supplemental_group_id_is_valid(
+        Some(vec![1600, 2600]),
+        get_must_run_as_rule(),
+        None,
+        None
+    )]
+    #[case::must_run_as_should_reject_when_supplemental_group_id_is_invalid(
+        Some(vec![9000]),
+        get_must_run_as_rule(),
+        Some(GROUP_OUTSIDE_RANGES_ERROR),
+        None
+    )]
+    #[case::must_run_as_should_mutate_supplemental_group_if_overwrite_is_set(
+        Some(vec![1600, 2600]),
+        get_must_run_as_rule_with_overwrite(),
+        None,
+        Some(get_pod_security_context_expected_mutation())
+    )]
+    #[case::may_run_as_should_not_mutate_supplemental_group_if_overwrite_is_set(
+        Some(vec![1600, 2600]),
+        get_may_run_as_rule_with_overwrite(),
+        None,
+        None
+    )]
+    fn test_supplemental_group_rules(
+        #[case] supplemental_groups: Option<std::vec::Vec<i64>>,
+        #[case] supplemental_groups_strategy: settings::RuleStrategy,
+        #[case] expected_error: Option<&str>,
+        #[case] expected_mutation: Option<PodSecurityContext>,
+    ) {
+        let security_context = Some(get_pod_security_context(supplemental_groups));
+        let validation_request = &ValidationRequest {
             settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![
-                        IDRange {
-                            min: 1500,
-                            max: 2000,
-                        },
-                        IDRange {
-                            min: 2500,
-                            max: 3000,
-                        },
-                    ],
-                    ..Default::default()
-                },
+                supplemental_groups: supplemental_groups_strategy,
                 ..Default::default()
             },
+            request: KubernetesAdmissionRequest::default(),
         };
-
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "MustRunAs should not mutate request"
-        );
-        Ok(())
+        let result = enforce_supplemental_groups(security_context, validation_request);
+        if let Some(expected_error) = expected_error {
+            assert_eq!(result.unwrap_err().to_string(), expected_error);
+        } else {
+            let mutated_security_context = result.expect("Expected Ok result");
+            assert_eq!(mutated_security_context, expected_mutation);
+        }
     }
 
-    #[test]
-    fn must_run_as_should_reject_when_supplemental_group_id_is_invalid() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_invalid_supplemental_group.json";
-        let tc = Testcase {
-            name: String::from(
-                "'MustRunAs' should reject request when supplemental group ID is invalid",
-            ),
-            fixture_file: String::from(request_file),
-            expected_validation_result: false,
+    #[rstest]
+    #[case(Some(1500), get_must_run_as_rule(), None, None)]
+    #[case::must_run_as_should_mutate_when_no_group_id_is_defined_adding_first_range_min_value(
+        None,
+        get_must_run_as_rule(),
+        None,
+        Some(get_security_context_expected_mutation_for_group_must_run_as())
+    )]
+    #[case::must_run_as_should_reject_when_group_id_is_invalid(
+        Some(500),
+        get_must_run_as_rule(),
+        Some(GROUP_OUTSIDE_RANGES_ERROR),
+        None
+    )]
+    #[case::run_as_any_should_not_mutate(None, get_run_as_any_rule(), None, None)]
+    #[case::must_run_as_should_mutate_groups_if_overwrite_is_set(
+        Some(2000),
+        get_must_run_as_rule_with_overwrite(),
+        None,
+        Some(get_security_context_expected_mutation_for_group_must_run_as())
+    )]
+    #[case::may_run_as_should_accept_request_if_group_id_is_valid(
+        Some(1500),
+        get_may_run_as_rule(),
+        None,
+        None
+    )]
+    #[case::may_run_as_should_reject_request_if_run_as_group_value_is_invalid(
+        Some(500),
+        get_may_run_as_rule(),
+        Some(GROUP_OUTSIDE_RANGES_ERROR),
+        None
+    )]
+    #[case::may_run_as_should_accept_request_if_run_as_group_is_not_defined(
+        None,
+        get_may_run_as_rule(),
+        None,
+        None
+    )]
+    #[case::may_run_as_should_not_mutate_group_if_overwrite_is_set(
+        Some(1500),
+        get_may_run_as_rule_with_overwrite(),
+        None,
+        None
+    )]
+    fn test_group_rules(
+        #[case] run_as_group: Option<i64>,
+        #[case] run_as_group_strategy: settings::RuleStrategy,
+        #[case] expected_error: Option<&str>,
+        #[case] expected_mutation: Option<SecurityContext>,
+    ) {
+        let security_context = Some(get_security_context_with_no_user(run_as_group));
+        let validation_request = &ValidationRequest {
             settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![
-                        IDRange {
-                            min: 1500,
-                            max: 2000,
-                        },
-                        IDRange {
-                            min: 2500,
-                            max: 3000,
-                        },
-                    ],
-                    ..Default::default()
-                },
+                run_as_group: run_as_group_strategy,
                 ..Default::default()
             },
+            request: KubernetesAdmissionRequest::default(),
         };
-
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "MustRunAs should not mutate request"
-        );
-        Ok(())
+        let container_image_config = None;
+        let result =
+            enforce_run_as_group(security_context, validation_request, container_image_config);
+        if let Some(expected_error) = expected_error {
+            assert_eq!(result.unwrap_err().to_string(), expected_error);
+        } else {
+            let mutated_security_context = result.expect("Expected Ok result");
+            assert_eq!(mutated_security_context, expected_mutation);
+        }
     }
 
-    #[test]
-    fn must_run_as_non_root_should_reject_request_when_run_as_non_root_is_false() -> Result<(), ()>
-    {
-        let request_file = "test_data/pod_creation_run_as_non_root_is_false.json";
-        let tc = Testcase {
-            name: String::from("MustRunAsNonRoot should reject request if 'runAsNonRoot' is false"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: false,
+    #[rstest]
+    #[case::must_run_as_should_accept_when_valid_user_id_is_defined(
+        Some(1500),
+        None,
+        get_must_run_as_rule(),
+        None,
+        None
+    )]
+    #[case::must_run_as_should_reject_when_user_id_is_invalid(
+        Some(500),
+        None,
+        get_must_run_as_rule(),
+        Some(MUST_RUN_AS_USER_OUTSIDE_RANGES),
+        None
+    )]
+    #[case::must_run_as_should_mutate_when_no_user_id_is_defined_adding_first_range_min_value(
+        None,
+        None,
+        get_must_run_as_rule(),
+        None,
+        Some(get_security_context_expected_mutation_must_run_as())
+    )]
+    #[case::run_as_any_should_not_mutate(None, None, get_run_as_any_rule(), None, None)]
+    #[case::must_run_as_should_mutate_groups_if_overwrite_is_set(
+        Some(2000),
+        None,
+        get_must_run_as_rule_with_overwrite(),
+        None,
+        Some(get_security_context_expected_mutation_must_run_as())
+    )]
+    #[case::must_run_as_non_root_should_reject_request_when_run_as_non_root_is_false(
+        Some(1000),
+        Some(false),
+        get_must_run_as_non_root_rule(),
+        Some(SHOULD_RUN_AS_NON_ROOT_ERROR),
+        None
+    )]
+    #[case::must_run_as_non_root_should_mutate_request_when_run_as_user_is_not_defined(
+        None,
+        None,
+        get_must_run_as_non_root_rule(),
+        None,
+        Some(get_security_context_expected_mutation_must_run_as_non_root())
+    )]
+    #[case::must_run_as_non_root_should_mutate_request_when_run_as_user_is_not_defined(
+        Some(0),
+        Some(true),
+        get_must_run_as_non_root_rule(),
+        Some(CANNOT_USE_ROOT_USER_ID),
+        None
+    )]
+    #[case::must_run_as_should_mutate_user_id_when_overwrite_is_true(
+        Some(1600),
+        None,
+        get_must_run_as_rule_with_overwrite(),
+        None,
+        Some(get_security_context_expected_mutation_must_run_as())
+    )]
+    fn test_user_rules(
+        #[case] run_as_user: Option<i64>,
+        #[case] run_as_non_root: Option<bool>,
+        #[case] run_as_user_strategy: settings::RuleStrategy,
+        #[case] expected_error: Option<&str>,
+        #[case] expected_mutation: Option<SecurityContext>,
+    ) {
+        let security_context = Some(get_security_context(run_as_user, run_as_non_root));
+        let validation_request = &ValidationRequest {
             settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAsNonRoot,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
+                run_as_user: run_as_user_strategy,
                 ..Default::default()
             },
+            request: KubernetesAdmissionRequest::default(),
         };
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "Request should not be mutated"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn must_run_as_non_root_should_mutate_request_when_run_as_user_is_not_defined() -> Result<(), ()>
-    {
-        let request_file = "test_data/pod_creation_must_run_as_with_no_user_id.json";
-        let tc = Testcase {
-            name: String::from(
-                "MustRunAsNonRoot should add 'runAsNonRoot' when 'runAsUser' is not defined",
-            ),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAsNonRoot,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-        let res = tc.eval(validate).unwrap();
-        assert!(res.mutated_object.is_some(), "Request should be mutated");
-        let run_as_non_root_json = jsonpath::select(
-            res.mutated_object.as_ref().unwrap(),
-            "$.spec.containers[*].securityContext.runAsNonRoot",
-        )
-        .unwrap();
-        assert_eq!(
-            run_as_non_root_json,
-            vec![true],
-            "MustRunAsNonRoot should add the 'runAsNonRoot' in the containers when no 'runAsUser' is not defined"
-        );
-        let run_as_non_root_json = jsonpath::select(
-            res.mutated_object.as_ref().unwrap(),
-            "$.spec.initContainers[*].securityContext.runAsNonRoot",
-        )
-        .unwrap();
-        assert_eq!(
-            run_as_non_root_json,
-            vec![true],
-            "MustRunAsNonRoot should add the 'runAsNonRoot' in the initContainers when no 'runAsUser' is not defined"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn must_run_as_non_root_should_reject_zero_as_user_id() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_zero_user_id.json";
-        let tc = Testcase {
-            name: String::from("MustRunAsNonRoot rule does not allow 0 as user ID"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: false,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAsNonRoot,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "Request should not be mutated"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn may_run_as_should_accept_request_if_group_id_is_valid() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_must_run_as_with_group_id.json";
-        let tc = Testcase {
-            name: String::from("MayRunAs should accept request when valid RunAsGroup value is set"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::MayRunAs,
-                    ranges: vec![IDRange {
-                        min: 1000,
-                        max: 2500,
-                    }],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "Request should not be mutated"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn may_run_as_should_reject_request_if_run_as_group_value_is_invalid() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_must_run_as_with_invalid_value.json";
-        let tc = Testcase {
-            name: String::from("MayRunAs should mutate object when no RunAsGroup value is invalid"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: false,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::MayRunAs,
-                    ranges: vec![IDRange {
-                        min: 2000,
-                        max: 2500,
-                    }],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "Request should not be mutated"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn may_run_as_should_accecpt_request_if_run_as_group_is_not_defined() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_must_run_as_with_no_value.json";
-        let tc = Testcase {
-            name: String::from("MayRunAs should not mutate object when no RunAsGroup value is set"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::MayRunAs,
-                    ranges: vec![IDRange {
-                        min: 2000,
-                        max: 2500,
-                    }],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "Request should not be mutated"
-        );
-        Ok(())
+        let container_image_config = None;
+        let result =
+            enforce_run_as_user_rule(security_context, validation_request, container_image_config);
+        if let Some(expected_error) = expected_error {
+            assert_eq!(result.unwrap_err().to_string(), expected_error);
+        } else {
+            let mutated_security_context = result.expect("Expected Ok result");
+            assert_eq!(mutated_security_context, expected_mutation);
+        }
     }
 
     #[test]
     fn must_run_as_rule_should_mutate_pod_when_no_values_id() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_must_run_as_with_no_value.json";
-        let tc = Testcase {
-            name: String::from("MustRunAs should mutate object when invalid values are set"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![IDRange {
-                        min: 1500,
-                        max: 2000,
-                    }],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![IDRange {
-                        min: 2000,
-                        max: 2500,
-                    }],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
+        let settings = Settings {
+            run_as_user: RuleStrategy {
+                rule: Rule::MustRunAs,
+                ranges: vec![IDRange {
+                    min: 1500,
+                    max: 2000,
+                }],
                 ..Default::default()
             },
+            run_as_group: RuleStrategy {
+                rule: Rule::MustRunAs,
+                ranges: vec![IDRange {
+                    min: 2000,
+                    max: 2500,
+                }],
+                ..Default::default()
+            },
+            ..Default::default()
         };
 
-        let res = tc.eval(validate).unwrap();
+        let res = perform_validation_call(
+            settings,
+            "test_data/pod_creation_must_run_as_with_no_value.json",
+        );
         assert!(res.mutated_object.is_some(), "Request should be mutated");
         let user_id_json = jsonpath::select(
             res.mutated_object.as_ref().unwrap(),
@@ -1043,339 +905,55 @@ mod tests {
     }
 
     #[test]
-    fn must_run_as_rule_should_reject_request_when_invaid_values_id() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_must_run_as_with_invalid_value.json";
-        let tc = Testcase {
-            name: String::from("MustRunAs should mutate object when invalid values are set"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: false,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![IDRange {
-                        min: 1500,
-                        max: 2000,
-                    }],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![IDRange {
-                        min: 2000,
-                        max: 2500,
-                    }],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
+    fn must_run_as_rule_should_reject_request_when_invaid_values_id() {
+        let settings = Settings {
+            run_as_user: RuleStrategy {
+                rule: Rule::MustRunAs,
+                ranges: vec![IDRange {
+                    min: 1500,
+                    max: 2000,
+                }],
                 ..Default::default()
             },
+            run_as_group: RuleStrategy {
+                rule: Rule::MustRunAs,
+                ranges: vec![IDRange {
+                    min: 2000,
+                    max: 2500,
+                }],
+                ..Default::default()
+            },
+            ..Default::default()
         };
 
-        let res = tc.eval(validate).unwrap();
+        let res = perform_validation_call(
+            settings,
+            "test_data/pod_creation_must_run_as_with_invalid_value.json",
+        );
         assert!(
             res.mutated_object.is_none(),
             "Request should not be mutated"
         );
-        Ok(())
     }
 
     #[test]
-    fn must_run_as_should_reject_when_group_id_is_invalid() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_must_run_as_with_invalid_group_id.json";
-        let tc = Testcase {
-            name: String::from("'MustRunAs' should reject request when group ID is invalid"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: false,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![
-                        IDRange {
-                            min: 1500,
-                            max: 2000,
-                        },
-                        IDRange {
-                            min: 2500,
-                            max: 3000,
-                        },
-                    ],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
+    fn must_run_as_should_accept_when_valid_user_id_is_defined_and_wrong_podsecuritycontext() {
+        let settings = Settings {
+            run_as_user: RuleStrategy {
+                rule: Rule::MustRunAs,
+                ranges: vec![IDRange {
+                    min: 1500,
+                    max: 2000,
+                }],
                 ..Default::default()
             },
+            ..Default::default()
         };
 
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "MustRunAs should not mutate request when no group ID is invalid"
+        let res = perform_validation_call(
+            settings,
+            "test_data/pod_creation_must_run_as_with_user_id_wrong_podsecuritycontext.json",
         );
-        Ok(())
-    }
-
-    #[test]
-    fn must_run_as_should_reject_when_user_id_is_invalid() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_must_run_as_with_invalid_user_id.json";
-        let tc = Testcase {
-            name: String::from("'MustRunAs' should reject request when user ID is invalid"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: false,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![
-                        IDRange {
-                            min: 1500,
-                            max: 2000,
-                        },
-                        IDRange {
-                            min: 2500,
-                            max: 3000,
-                        },
-                    ],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "MustRunAs should not mutate request when no user ID is invalid"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn must_run_as_should_mutate_when_no_group_id_is_defined_adding_first_range_min_value(
-    ) -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_must_run_as_with_no_group_id.json";
-        let tc = Testcase {
-            name: String::from("'MustRunAs' should mutate when no group ID is defined"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![
-                        IDRange {
-                            min: 1500,
-                            max: 2000,
-                        },
-                        IDRange {
-                            min: 2500,
-                            max: 3000,
-                        },
-                    ],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_some(),
-            "MustRunAs should mutate request when no group ID is defined"
-        );
-        let json = jsonpath::select(
-            res.mutated_object.as_ref().unwrap(),
-            "$.spec.containers[*].securityContext.runAsGroup",
-        )
-        .unwrap();
-        assert_eq!(
-            json,
-            vec![1500],
-            "Mutated group ID is not the first range's min value"
-        );
-        let json = jsonpath::select(
-            res.mutated_object.as_ref().unwrap(),
-            "$.spec.initContainers[*].securityContext.runAsGroup",
-        )
-        .unwrap();
-        assert_eq!(
-            json,
-            vec![1500],
-            "Mutated group ID is not the first range's min value"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn must_run_as_should_mutate_when_no_user_id_is_defined_adding_first_range_min_value(
-    ) -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_must_run_as_with_no_user_id.json";
-        let tc = Testcase {
-            name: String::from("'MustRunAs' should mutate when no user ID is defined"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![
-                        IDRange {
-                            min: 1500,
-                            max: 2000,
-                        },
-                        IDRange {
-                            min: 2500,
-                            max: 3000,
-                        },
-                    ],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_some(),
-            "MustRunAs should mutate request when no user ID is defined"
-        );
-        let json = jsonpath::select(
-            res.mutated_object.as_ref().unwrap(),
-            "$.spec.containers[*].securityContext.runAsUser",
-        )
-        .unwrap();
-        assert_eq!(
-            json,
-            vec![1500],
-            "Mutated user ID is not the first range's min value"
-        );
-        let json = jsonpath::select(
-            res.mutated_object.as_ref().unwrap(),
-            "$.spec.initContainers[*].securityContext.runAsUser",
-        )
-        .unwrap();
-        assert_eq!(
-            json,
-            vec![1500],
-            "Mutated user ID is not the first range's min value"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn must_run_as_should_accept_when_valid_group_id_is_defined() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_must_run_as_with_group_id.json";
-        let tc = Testcase {
-            name: String::from(
-                "MustRunAs should not mutate request when valid group ID is defined",
-            ),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![IDRange {
-                        min: 1500,
-                        max: 2000,
-                    }],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "MustRunAs should not mutate request when valid group ID is defined"
-        );
-        assert!(
-            res.accepted,
-            "MustRunAs should accept request when valid group ID is defined"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn must_run_as_should_accept_when_valid_user_id_is_defined() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_must_run_as_with_user_id.json";
-        let tc = Testcase {
-            name: String::from("MustRunAs should not mutate request when valid user ID is defined"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![IDRange {
-                        min: 1500,
-                        max: 2000,
-                    }],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-
-        let res = tc.eval(validate).unwrap();
         assert!(
             res.mutated_object.is_none(),
             "MustRunAs should not mutate request when valid user ID is defined"
@@ -1384,86 +962,27 @@ mod tests {
             res.accepted,
             "MustRunAs should accept request when valid user ID is defined"
         );
-        Ok(())
-    }
-
-    #[test]
-    fn must_run_as_should_accept_when_valid_user_id_is_defined_and_wrong_podsecuritycontext(
-    ) -> Result<(), ()> {
-        let request_file =
-            "test_data/pod_creation_must_run_as_with_user_id_wrong_podsecuritycontext.json";
-        let tc = Testcase {
-            name: String::from("MustRunAs should not mutate request when valid user ID is defined"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![IDRange {
-                        min: 1500,
-                        max: 2000,
-                    }],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "MustRunAs should not mutate request when valid user ID is defined"
-        );
-        assert!(
-            res.accepted,
-            "MustRunAs should accept request when valid user ID is defined"
-        );
-        Ok(())
     }
 
     #[test]
     fn must_run_as_should_mutate_when_valid_user_id_is_defined_and_wrong_podsecuritycontext_and_overwrite(
-    ) -> Result<(), ()> {
-        let request_file =
-            "test_data/pod_creation_must_run_as_with_user_id_wrong_podsecuritycontext.json";
-        let tc = Testcase {
-            name: String::from("MustRunAs should not mutate request when valid user ID is defined"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![IDRange {
-                        min: 1500,
-                        max: 2000,
-                    }],
-                    overwrite: true,
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
+    ) {
+        let settings = Settings {
+            run_as_user: RuleStrategy {
+                rule: Rule::MustRunAs,
+                ranges: vec![IDRange {
+                    min: 1500,
+                    max: 2000,
+                }],
+                overwrite: true,
             },
+            ..Default::default()
         };
 
-        let res = tc.eval(validate).unwrap();
+        let res = perform_validation_call(
+            settings,
+            "test_data/pod_creation_must_run_as_with_user_id_wrong_podsecuritycontext.json",
+        );
         assert!(
             res.mutated_object.is_some(),
             "MustRunAs should mutate request"
@@ -1478,551 +997,85 @@ mod tests {
             vec![1500],
             "MustRunAs should add the 'supplementalGroups' when it is not defined"
         );
-        Ok(())
     }
 
-    #[test]
-    fn run_as_any_should_not_mutate_pod() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_run_as_any.json";
-        let tc = Testcase {
-            name: String::from("RunAsAny should not mutate object"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
+    #[rstest]
+    #[case::deployment("test_data/deployment_root_user.json")]
+    #[case::cronjob("test_data/cronjob_root_user.json")]
+    #[case::daemonset("test_data/daemonset_root_user.json")]
+    #[case::job("test_data/job_root_user.json")]
+    #[case::replicaset("test_data/replicaset_root_user.json")]
+    #[case::replicationcontroller("test_data/replicationcontroller_root_user.json")]
+    #[case::statefulset("test_data/statefulset_root_user.json")]
+    fn must_run_as_non_root_should_reject_workload_with_zero_as_user_id(
+        #[case] request_file: &str,
+    ) {
+        let settings = Settings {
+            run_as_user: RuleStrategy {
+                rule: Rule::MustRunAsNonRoot,
+                ranges: vec![],
                 ..Default::default()
             },
+            ..Default::default()
         };
-
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "RunAsAny should not mutate request"
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn must_run_as_should_mutate_supplemental_group_if_overwrite_is_set() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_valid_supplemental_group.json";
-        let tc = Testcase {
-            name: String::from("'MustRunAs' should mutate request when overwrite is 'true'"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![
-                        IDRange {
-                            min: 1500,
-                            max: 2000,
-                        },
-                        IDRange {
-                            min: 2500,
-                            max: 3000,
-                        },
-                    ],
-                    overwrite: true,
-                },
-                ..Default::default()
-            },
-        };
-
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_some(),
-            "MustRunAs should mutate request"
-        );
-        let supplemental_groups_json = jsonpath::select(
-            res.mutated_object.as_ref().unwrap(),
-            "$.spec.securityContext.supplementalGroups[*]",
-        )
-        .unwrap();
-        assert_eq!(
-            supplemental_groups_json,
-            vec![1500],
-            "MustRunAs should change 'supplementalGroups' when 'overwrite' setting is true"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn may_run_as_should_not_mutate_supplemental_group_if_overwrite_is_set() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_valid_supplemental_group.json";
-        let tc = Testcase {
-            name: String::from("'MayRunAs' should not mutate request when overwrite is 'true'"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::MayRunAs,
-                    ranges: vec![IDRange {
-                        min: 1000,
-                        max: 4000,
-                    }],
-                    overwrite: true,
-                },
-                ..Default::default()
-            },
-        };
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "Overwrite should not mutate request"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn must_run_as_should_mutate_groups_if_overwrite_is_set() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_must_run_as_with_group_id.json";
-        let tc = Testcase {
-            name: String::from("'MustRunAs' should mutate groups when overwrite is 'true'"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![
-                        IDRange {
-                            min: 1000,
-                            max: 2000,
-                        },
-                        IDRange {
-                            min: 2500,
-                            max: 3000,
-                        },
-                    ],
-                    overwrite: true,
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_some(),
-            "MustRunAs should mutate request"
-        );
-        let json = jsonpath::select(
-            res.mutated_object.as_ref().unwrap(),
-            "$.spec.containers[*].securityContext.runAsGroup",
-        )
-        .unwrap();
-        assert_eq!(
-            json,
-            vec![1000],
-            "MustRunAs should change 'runAsGroup' when 'overwrite' setting is true"
-        );
-
-        let json = jsonpath::select(
-            res.mutated_object.as_ref().unwrap(),
-            "$.spec.initContainers[*].securityContext.runAsGroup",
-        )
-        .unwrap();
-        assert_eq!(
-            json,
-            vec![1000],
-            "MustRunAs should change 'runAsGroup' when 'overwrite' setting is true"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn may_run_as_should_not_mutate_group_if_overwrite_is_set() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_must_run_as_with_group_id.json";
-        let tc = Testcase {
-            name: String::from("'MayRunAs' should mutate request when overwrite is 'true'"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::MayRunAs,
-                    ranges: vec![
-                        IDRange {
-                            min: 1000,
-                            max: 2000,
-                        },
-                        IDRange {
-                            min: 2500,
-                            max: 3000,
-                        },
-                    ],
-                    overwrite: true,
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "MayRunAs should not mutate request"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn must_run_as_should_mutate_user_id_when_overwrite_is_true() -> Result<(), ()> {
-        let request_file = "test_data/pod_creation_must_run_as_with_user_id.json";
-        let tc = Testcase {
-            name: String::from("MustRunAs should mutate request 'overwrite' is set"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![IDRange {
-                        min: 1000,
-                        max: 2000,
-                    }],
-                    overwrite: true,
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_some(),
-            "MustRunAs should mutate request when 'overwrite' is set"
-        );
-        let json = jsonpath::select(
-            res.mutated_object.as_ref().unwrap(),
-            "$.spec.containers[*].securityContext.runAsUser",
-        )
-        .unwrap();
-        assert_eq!(
-            json,
-            vec![1000],
-            "Mutated user ID should be the first range's min value"
-        );
-        let json = jsonpath::select(
-            res.mutated_object.as_ref().unwrap(),
-            "$.spec.initContainers[*].securityContext.runAsUser",
-        )
-        .unwrap();
-        assert_eq!(
-            json,
-            vec![1000],
-            "Mutated user ID should be the first range's min value"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn must_run_as_non_root_should_reject_deployment_with_zero_as_user_id() -> Result<(), ()> {
-        let request_file = "test_data/deployment_root_user.json";
-        let tc = Testcase {
-            name: String::from("MustRunAsNonRoot rule does not allow 0 as user ID"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: false,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAsNonRoot,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-        let res = tc.eval(validate).unwrap();
+        let res = perform_validation_call(settings, request_file);
         assert!(
             res.mutated_object.is_none(),
             "Request should not be mutated"
         );
-        Ok(())
     }
 
-    #[test]
-    fn must_run_as_non_root_should_reject_cronjob_with_zero_as_user_id() -> Result<(), ()> {
-        let request_file = "test_data/cronjob_root_user.json";
-        let tc = Testcase {
-            name: String::from("MustRunAsNonRoot rule does not allow 0 as user ID"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: false,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAsNonRoot,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
+    #[rstest]
+    #[case::deployment(
+        "test_data/deployment_with_no_securitycontext.json",
+        "$.spec.template.spec.containers[*].securityContext.runAsNonRoot"
+    )]
+    #[case::replicaset(
+        "test_data/replicaset_with_no_securitycontext.json",
+        "$.spec.template.spec.containers[*].securityContext.runAsNonRoot"
+    )]
+    #[case::daemonset(
+        "test_data/daemonset_with_no_securitycontext.json",
+        "$.spec.template.spec.containers[*].securityContext.runAsNonRoot"
+    )]
+    #[case::statefulset(
+        "test_data/statefulset_with_no_securitycontext.json",
+        "$.spec.template.spec.containers[*].securityContext.runAsNonRoot"
+    )]
+    #[case::replicationcontroller(
+        "test_data/replicationcontroller_with_no_securitycontext.json",
+        "$.spec.template.spec.containers[*].securityContext.runAsNonRoot"
+    )]
+    #[case::job(
+        "test_data/job_with_no_securitycontext.json",
+        "$.spec.template.spec.containers[*].securityContext.runAsNonRoot"
+    )]
+    #[case::cronjob(
+        "test_data/cronjob_with_no_securitycontext.json",
+        "$.spec.jobTemplate.spec.template.spec.containers[*].securityContext.runAsNonRoot"
+    )]
+    fn must_run_as_non_root_should_mutate_highlevel_workload_kind_request_when_run_as_user_is_not_defined(
+        #[case] request_file: &str,
+        #[case] json_validation_path: &str,
+    ) {
+        let settings = Settings {
+            run_as_user: RuleStrategy {
+                rule: Rule::MustRunAsNonRoot,
+                ranges: vec![],
                 ..Default::default()
             },
+            ..Default::default()
         };
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "Request should not be mutated"
-        );
-        Ok(())
-    }
 
-    #[test]
-    fn must_run_as_non_root_should_reject_daemonset_with_zero_as_user_id() -> Result<(), ()> {
-        let request_file = "test_data/daemonset_root_user.json";
-        let tc = Testcase {
-            name: String::from("MustRunAsNonRoot rule does not allow 0 as user ID"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: false,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAsNonRoot,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "Request should not be mutated"
-        );
-        Ok(())
-    }
+        let response = perform_validation_call(settings, request_file);
 
-    #[test]
-    fn must_run_as_non_root_should_reject_job_with_zero_as_user_id() -> Result<(), ()> {
-        let request_file = "test_data/job_root_user.json";
-        let tc = Testcase {
-            name: String::from("MustRunAsNonRoot rule does not allow 0 as user ID"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: false,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAsNonRoot,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-        let res = tc.eval(validate).unwrap();
         assert!(
-            res.mutated_object.is_none(),
-            "Request should not be mutated"
+            response.mutated_object.is_some(),
+            "Request should be mutated"
         );
-        Ok(())
-    }
-
-    #[test]
-    fn must_run_as_non_root_should_reject_replicaset_with_zero_as_user_id() -> Result<(), ()> {
-        let request_file = "test_data/replicaset_root_user.json";
-        let tc = Testcase {
-            name: String::from("MustRunAsNonRoot rule does not allow 0 as user ID"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: false,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAsNonRoot,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "Request should not be mutated"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn must_run_as_non_root_should_reject_replicationcontroller_with_zero_as_user_id(
-    ) -> Result<(), ()> {
-        let request_file = "test_data/replicationcontroller_root_user.json";
-        let tc = Testcase {
-            name: String::from("MustRunAsNonRoot rule does not allow 0 as user ID"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: false,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAsNonRoot,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "Request should not be mutated"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn must_run_as_non_root_should_reject_statefulset_with_zero_as_user_id() -> Result<(), ()> {
-        let request_file = "test_data/statefulset_root_user.json";
-        let tc = Testcase {
-            name: String::from("MustRunAsNonRoot rule does not allow 0 as user ID"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: false,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAsNonRoot,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-        let res = tc.eval(validate).unwrap();
-        assert!(
-            res.mutated_object.is_none(),
-            "Request should not be mutated"
-        );
-        Ok(())
-    }
-
-    fn check_if_response_has_mutate_object_and_set_run_as_non_root(
-        test_res: anyhow::Result<ValidationResponse>,
-    ) -> Result<(), ()> {
-        assert!(test_res.is_ok(), "The validate function failed.");
-        let res = test_res.unwrap();
-        assert!(res.mutated_object.is_some(), "Request should be mutated");
         let run_as_non_root_json = jsonpath::select(
-            res.mutated_object.as_ref().unwrap(),
-            "$.spec.template.spec.containers[*].securityContext.runAsNonRoot",
+            response.mutated_object.as_ref().unwrap(),
+            json_validation_path,
         )
         .unwrap();
         assert_eq!(
@@ -2030,288 +1083,34 @@ mod tests {
             vec![true],
             "MustRunAsNonRoot should add the 'runAsNonRoot' in the containers when no 'runAsUser' is not defined"
         );
-        Ok(())
     }
 
     #[test]
-    fn must_run_as_non_root_should_mutate_deployment_request_when_run_as_user_is_not_defined(
-    ) -> Result<(), ()> {
-        let request_file = "test_data/deployment_with_no_securitycontext.json";
-        let tc = Testcase {
-            name: String::from(
-                "MustRunAsNonRoot should add 'runAsNonRoot' when 'runAsUser' is not defined",
-            ),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAsNonRoot,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
+    fn must_run_as_should_mutate_deployment_with_podspec_securitycontext_without_values() {
+        let settings = Settings {
+            run_as_user: RuleStrategy {
+                rule: Rule::MustRunAs,
+                ranges: vec![IDRange {
+                    min: 1500,
+                    max: 2000,
+                }],
                 ..Default::default()
             },
-        };
-        let test_res = tc.eval(validate);
-        check_if_response_has_mutate_object_and_set_run_as_non_root(test_res)
-    }
-
-    #[test]
-    fn must_run_as_non_root_should_mutate_replicaset_request_when_run_as_user_is_not_defined(
-    ) -> Result<(), ()> {
-        let request_file = "test_data/replicaset_with_no_securitycontext.json";
-        let tc = Testcase {
-            name: String::from(
-                "MustRunAsNonRoot should add 'runAsNonRoot' when 'runAsUser' is not defined",
-            ),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAsNonRoot,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
+            run_as_group: RuleStrategy {
+                rule: Rule::MustRunAs,
+                ranges: vec![IDRange {
+                    min: 2000,
+                    max: 2500,
+                }],
                 ..Default::default()
             },
+            ..Default::default()
         };
-        let test_res = tc.eval(validate);
-        check_if_response_has_mutate_object_and_set_run_as_non_root(test_res)
-    }
-
-    #[test]
-    fn must_run_as_non_root_should_mutate_daemonset_request_when_run_as_user_is_not_defined(
-    ) -> Result<(), ()> {
-        let request_file = "test_data/daemonset_with_no_securitycontext.json";
-        let tc = Testcase {
-            name: String::from(
-                "MustRunAsNonRoot should add 'runAsNonRoot' when 'runAsUser' is not defined",
-            ),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAsNonRoot,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-        let test_res = tc.eval(validate);
-        check_if_response_has_mutate_object_and_set_run_as_non_root(test_res)
-    }
-
-    #[test]
-    fn must_run_as_non_root_should_mutate_statefulset_request_when_run_as_user_is_not_defined(
-    ) -> Result<(), ()> {
-        let request_file = "test_data/statefulset_with_no_securitycontext.json";
-        let tc = Testcase {
-            name: String::from(
-                "MustRunAsNonRoot should add 'runAsNonRoot' when 'runAsUser' is not defined",
-            ),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAsNonRoot,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-        let test_res = tc.eval(validate);
-        check_if_response_has_mutate_object_and_set_run_as_non_root(test_res)
-    }
-
-    #[test]
-    fn must_run_as_non_root_should_mutate_replicationcontroller_request_when_run_as_user_is_not_defined(
-    ) -> Result<(), ()> {
-        let request_file = "test_data/replicationcontroller_with_no_securitycontext.json";
-        let tc = Testcase {
-            name: String::from(
-                "MustRunAsNonRoot should add 'runAsNonRoot' when 'runAsUser' is not defined",
-            ),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAsNonRoot,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-        let test_res = tc.eval(validate);
-        check_if_response_has_mutate_object_and_set_run_as_non_root(test_res)
-    }
-
-    #[test]
-    fn must_run_as_non_root_should_mutate_cronjob_request_when_run_as_user_is_not_defined(
-    ) -> Result<(), ()> {
-        let request_file = "test_data/cronjob_with_no_securitycontext.json";
-        let tc = Testcase {
-            name: String::from(
-                "MustRunAsNonRoot should add 'runAsNonRoot' when 'runAsUser' is not defined",
-            ),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAsNonRoot,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-        let test_res = tc.eval(validate);
-        assert!(test_res.is_ok(), "The validate function failed.");
-        let res = test_res.unwrap();
-        assert!(res.mutated_object.is_some(), "Request should be mutated");
-        let run_as_non_root_json = jsonpath::select(
-            res.mutated_object.as_ref().unwrap(),
-            "$.spec.jobTemplate.spec.template.spec.containers[*].securityContext.runAsNonRoot",
-        )
-        .unwrap();
-        assert_eq!(
-            run_as_non_root_json,
-            vec![true],
-            "MustRunAsNonRoot should add the 'runAsNonRoot' in the containers when no 'runAsUser' is not defined"
+        let res = perform_validation_call(
+            settings,
+            "test_data/deployment_with_no_securitycontext.json",
         );
-        Ok(())
-    }
 
-    #[test]
-    fn must_run_as_non_root_should_mutate_job_request_when_run_as_user_is_not_defined(
-    ) -> Result<(), ()> {
-        let request_file = "test_data/job_with_no_securitycontext.json";
-        let tc = Testcase {
-            name: String::from(
-                "MustRunAsNonRoot should add 'runAsNonRoot' when 'runAsUser' is not defined",
-            ),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAsNonRoot,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-        let test_res = tc.eval(validate);
-        check_if_response_has_mutate_object_and_set_run_as_non_root(test_res)
-    }
-
-    #[test]
-    fn must_run_as_should_mutate_deployment_with_podspec_securitycontext_without_values(
-    ) -> Result<(), ()> {
-        let request_file = "test_data/deployment_with_no_securitycontext.json";
-        let tc = Testcase {
-            name: String::from("MustRunAs should mutate object when invalid values are set"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: true,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![IDRange {
-                        min: 1500,
-                        max: 2000,
-                    }],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![IDRange {
-                        min: 2000,
-                        max: 2500,
-                    }],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        };
-
-        let res = tc.eval(validate).unwrap();
         assert!(res.mutated_object.is_some(), "Request should be mutated");
         let user_id_json = jsonpath::select(
             res.mutated_object.as_ref().unwrap(),
@@ -2334,49 +1133,34 @@ mod tests {
             vec![2000],
             "MustRunAs should mutate object when invalid group ID is set"
         );
-        Ok(())
     }
 
     #[test]
-    fn must_run_as_should_reject_deployment_with_podspec_securitycontext_with_invalid_values(
-    ) -> Result<(), ()> {
-        let request_file = "test_data/deployment_with_user.json";
-        let tc = Testcase {
-            name: String::from("MustRunAs should mutate object when invalid values are set"),
-            fixture_file: String::from(request_file),
-            expected_validation_result: false,
-            settings: Settings {
-                run_as_user: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![IDRange {
-                        min: 1500,
-                        max: 2000,
-                    }],
-                    ..Default::default()
-                },
-                run_as_group: RuleStrategy {
-                    rule: Rule::MustRunAs,
-                    ranges: vec![IDRange {
-                        min: 2000,
-                        max: 2500,
-                    }],
-                    ..Default::default()
-                },
-                supplemental_groups: RuleStrategy {
-                    rule: Rule::RunAsAny,
-                    ranges: vec![],
-                    ..Default::default()
-                },
+    fn must_run_as_should_reject_deployment_with_podspec_securitycontext_with_invalid_values() {
+        let settings = Settings {
+            run_as_user: RuleStrategy {
+                rule: Rule::MustRunAs,
+                ranges: vec![IDRange {
+                    min: 1500,
+                    max: 2000,
+                }],
                 ..Default::default()
             },
+            run_as_group: RuleStrategy {
+                rule: Rule::MustRunAs,
+                ranges: vec![IDRange {
+                    min: 2000,
+                    max: 2500,
+                }],
+                ..Default::default()
+            },
+            ..Default::default()
         };
-
-        let res = tc.eval(validate).unwrap();
+        let res = perform_validation_call(settings, "test_data/deployment_with_user.json");
         assert!(
             res.mutated_object.is_none(),
             "MustRunAs should not mutate request when user ID is invalid"
         );
-        Ok(())
     }
 
     #[rstest]
