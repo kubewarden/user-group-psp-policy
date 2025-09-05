@@ -1,0 +1,12 @@
+{
+  "run_as_user": {
+    "rule": "MustRunAsNonRoot"
+  },
+  "run_as_group": {
+    "rule": "RunAsAny"
+  },
+  "supplemental_groups": {
+    "rule": "RunAsAny"
+  },
+  "validate_only": true
+}
