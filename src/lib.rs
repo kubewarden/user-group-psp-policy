@@ -451,7 +451,7 @@ mod tests {
     use settings::Settings;
     use settings::{IDRange, RuleStrategy};
 
-    fn get_must_run_as_rule_with_overwrite() -> settings::RuleStrategy {
+    fn get_must_run_as_rule(overwrite: bool) -> settings::RuleStrategy {
         RuleStrategy {
             rule: Rule::MustRunAs,
             ranges: vec![
@@ -464,24 +464,7 @@ mod tests {
                     max: 3000,
                 },
             ],
-            overwrite: true,
-        }
-    }
-
-    fn get_must_run_as_rule() -> settings::RuleStrategy {
-        RuleStrategy {
-            rule: Rule::MustRunAs,
-            ranges: vec![
-                settings::IDRange {
-                    min: 1500,
-                    max: 2000,
-                },
-                IDRange {
-                    min: 2500,
-                    max: 3000,
-                },
-            ],
-            overwrite: false,
+            overwrite,
         }
     }
 
@@ -493,25 +476,14 @@ mod tests {
         }
     }
 
-    fn get_may_run_as_rule() -> settings::RuleStrategy {
+    fn get_may_run_as_rule(overwrite: bool) -> settings::RuleStrategy {
         RuleStrategy {
             rule: Rule::MayRunAs,
             ranges: vec![IDRange {
                 min: 1000,
                 max: 4000,
             }],
-            ..Default::default()
-        }
-    }
-
-    fn get_may_run_as_rule_with_overwrite() -> settings::RuleStrategy {
-        RuleStrategy {
-            rule: Rule::MayRunAs,
-            ranges: vec![IDRange {
-                min: 1000,
-                max: 4000,
-            }],
-            overwrite: true,
+            overwrite,
         }
     }
 
@@ -595,44 +567,44 @@ mod tests {
     #[rstest]
     #[case::may_run_as_supplemental_group_id_inside_range(
         Some(vec![ 1600, 2600 ]),
-        get_may_run_as_rule(),
+        get_may_run_as_rule(false),
         None,
         None
     )]
     #[case::may_run_as_supplemental_group_id_outside_range(
         Some(vec![999, 4001]),
-        get_may_run_as_rule(),
+        get_may_run_as_rule(false),
         Some(ValidationError::GroupIdOutsideRanges),
         None
     )]
-    #[case::may_run_as_supplemental_group_missing(None, get_may_run_as_rule(), None, None)]
+    #[case::may_run_as_supplemental_group_missing(None, get_may_run_as_rule(false), None, None)]
     #[case::must_run_as_supplemental_group_id_missing(
         None,
-        get_must_run_as_rule(),
+        get_must_run_as_rule(false),
         None,
         Some(get_pod_security_context_expected_mutation())
     )]
     #[case::must_run_as_supplemental_group_id_inside_ranges(
         Some(vec![1600, 2600]),
-        get_must_run_as_rule(),
+        get_must_run_as_rule(false),
         None,
         None
     )]
     #[case::must_run_as_supplemental_group_id_outside_ranges(
         Some(vec![9000]),
-        get_must_run_as_rule(),
+        get_must_run_as_rule(false),
         Some(ValidationError::GroupIdOutsideRanges),
         None
     )]
     #[case::must_run_as_supplemental_group_inside_ranges_overwrite(
         Some(vec![1600, 2600]),
-        get_must_run_as_rule_with_overwrite(),
+        get_must_run_as_rule(true),
         None,
         Some(get_pod_security_context_expected_mutation())
     )]
     #[case::may_run_as_supplemental_group_inside_range_overwrite(
         Some(vec![1600, 2600]),
-        get_may_run_as_rule_with_overwrite(),
+        get_may_run_as_rule(true),
         None,
         None
     )]
@@ -660,40 +632,35 @@ mod tests {
     }
 
     #[rstest]
-    #[case::must_run_as_group_id_inside_ranges(Some(1500), get_must_run_as_rule(), None, None)]
+    #[case::must_run_as_group_id_inside_ranges(Some(1500), get_must_run_as_rule(false), None, None)]
     #[case::must_run_as_missing_group(
         None,
-        get_must_run_as_rule(),
+        get_must_run_as_rule(false),
         None,
         Some(get_security_context_expected_mutation_for_group_must_run_as())
     )]
     #[case::must_run_as_group_outside_ranges(
         Some(500),
-        get_must_run_as_rule(),
+        get_must_run_as_rule(false),
         Some(ValidationError::GroupIdOutsideRanges),
         None
     )]
     #[case::run_as_any_missing_group(None, get_run_as_any_rule(), None, None)]
     #[case::must_run_as_group_id_inside_ranges_overwrite(
         Some(2000),
-        get_must_run_as_rule_with_overwrite(),
+        get_must_run_as_rule(true),
         None,
         Some(get_security_context_expected_mutation_for_group_must_run_as())
     )]
-    #[case::may_run_as_group_id_inside_ranges(Some(1500), get_may_run_as_rule(), None, None)]
+    #[case::may_run_as_group_id_inside_ranges(Some(1500), get_may_run_as_rule(false), None, None)]
     #[case::may_run_as_group_id_outside_ranges(
         Some(500),
-        get_may_run_as_rule(),
+        get_may_run_as_rule(false),
         Some(ValidationError::GroupIdOutsideRanges),
         None
     )]
-    #[case::may_run_as_missing_group_id(None, get_may_run_as_rule(), None, None)]
-    #[case::may_run_as_group_id_and_overwrite(
-        Some(1500),
-        get_may_run_as_rule_with_overwrite(),
-        None,
-        None
-    )]
+    #[case::may_run_as_missing_group_id(None, get_may_run_as_rule(false), None, None)]
+    #[case::may_run_as_group_id_and_overwrite(Some(1500), get_may_run_as_rule(true), None, None)]
     fn test_group_rules(
         #[case] run_as_group: Option<i64>,
         #[case] run_as_group_strategy: settings::RuleStrategy,
@@ -720,18 +687,24 @@ mod tests {
     }
 
     #[rstest]
-    #[case::must_run_as_with_user_in_ranges(Some(1500), None, get_must_run_as_rule(), None, None)]
+    #[case::must_run_as_with_user_in_ranges(
+        Some(1500),
+        None,
+        get_must_run_as_rule(false),
+        None,
+        None
+    )]
     #[case::must_run_as_with_user_outside_ranges(
         Some(500),
         None,
-        get_must_run_as_rule(),
+        get_must_run_as_rule(false),
         Some(ValidationError::UserIdOutsideRanges),
         None
     )]
     #[case::must_run_as_with_missing_user_id(
         None,
         None,
-        get_must_run_as_rule(),
+        get_must_run_as_rule(false),
         None,
         Some(get_security_context_expected_mutation_must_run_as())
     )]
@@ -739,7 +712,7 @@ mod tests {
     #[case::must_run_as_with_user_and_overwrite_is_set(
         Some(2000),
         None,
-        get_must_run_as_rule_with_overwrite(),
+        get_must_run_as_rule(true),
         None,
         Some(get_security_context_expected_mutation_must_run_as())
     )]
@@ -767,7 +740,7 @@ mod tests {
     #[case::must_run_as_with_user_id_and_overwrite_is_true(
         Some(1600),
         None,
-        get_must_run_as_rule_with_overwrite(),
+        get_must_run_as_rule(true),
         None,
         Some(get_security_context_expected_mutation_must_run_as())
     )]
