@@ -4,7 +4,7 @@ use guest::prelude::*;
 use kubewarden_policy_sdk::host_capabilities::oci::get_manifest_and_config;
 use kubewarden_policy_sdk::wapc_guest as guest;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use k8s_openapi::api::core::v1 as apicore;
 
 extern crate kubewarden_policy_sdk as kubewarden;
@@ -14,6 +14,8 @@ mod settings;
 use settings::{Rule, Settings};
 
 use slog::{o, warn, Logger};
+mod error;
+use error::ValidationError;
 
 lazy_static! {
     static ref LOG_DRAIN: Logger = Logger::root(
@@ -28,20 +30,6 @@ pub extern "C" fn wapc_init() {
     register_function("validate_settings", validate_settings::<Settings>);
     register_function("protocol_version", protocol_version_guest);
 }
-
-const USER_ID_OUTSIDE_RANGES_ERROR: &str = "User ID outside defined ranges";
-const GROUP_ID_OUTSIDE_RANGES_ERROR: &str = "Group ID is outside defined ranges";
-const SHOULD_RUN_AS_NON_ROOT_ERROR: &str = "RunAsNonRoot should be set to true";
-const CANNOT_USE_ROOT_USER_ID_ERROR: &str =
-    "Invalid user ID: cannot run container with root ID (0)";
-const IMAGE_CONFIG_GROUP_ID_ERROR: &str = "Invalid group ID in the container image configuration";
-const IMAGE_CONFIG_USER_ID_ERROR: &str = "Invalid user ID in the container image configuration";
-const IMAGE_CONFIG_USER_ID_OUTSIDE_RANGES_ERROR: &str =
-    "User ID defined in the container image is outside defined ranges";
-const IMAGE_CONFIG_USER_ID_CANNOT_BE_ROOT_ERROR: &str =
-    "User ID defined in the container image cannot be root ID (0)";
-const IMAGE_CONFIG_GROUP_ID_OUTSIDE_RANGES_ERROR: &str =
-    "Group ID defined in the container image is outside defined ranges";
 
 trait GenericSecurityContext {
     fn run_as_user(&self) -> Option<i64>;
@@ -106,7 +94,7 @@ impl GenericSecurityContext for apicore::PodSecurityContext {
 
 fn get_user_group_uid_from_image_configuration(
     container_image_config: Option<oci_spec::image::ImageConfiguration>,
-) -> Result<(Option<i64>, Option<i64>)> {
+) -> Result<(Option<i64>, Option<i64>), ValidationError> {
     if let Some(image_config) = container_image_config {
         if let Some(user) = image_config.config().clone().unwrap_or_default().user() {
             let user_group: Vec<&str> = user.split(':').collect();
@@ -115,20 +103,14 @@ fn get_user_group_uid_from_image_configuration(
                     if let Ok(group_id) = user_group[1].parse::<i64>() {
                         return Ok((Some(user_id), Some(group_id)));
                     } else {
-                        return Err(anyhow!(
-                            "{}: \"{}\"",
-                            IMAGE_CONFIG_GROUP_ID_ERROR,
-                            user_group[1]
+                        return Err(ValidationError::ImageConfigGroupId(
+                            user_group[1].to_owned(),
                         ));
                     }
                 }
                 return Ok((Some(user_id), None));
             } else {
-                return Err(anyhow!(
-                    "{}: \"{}\"",
-                    IMAGE_CONFIG_USER_ID_ERROR,
-                    user_group[0]
-                ));
+                return Err(ValidationError::ImageConfigUserId(user_group[0].to_owned()));
             }
         }
     }
@@ -139,7 +121,7 @@ fn enforce_run_as_user_rule<T>(
     security_context_option: Option<T>,
     validation_request: &ValidationRequest<Settings>,
     container_image_config: Option<oci_spec::image::ImageConfiguration>,
-) -> Result<Option<T>>
+) -> Result<Option<T>, ValidationError>
 where
     T: GenericSecurityContext + std::default::Default,
 {
@@ -150,7 +132,7 @@ where
         Rule::MustRunAs => {
             if let (Some(user_id), _) = container_user_group_uid {
                 if !validation_request.settings.run_as_user.is_valid_id(user_id) {
-                    return Err(anyhow!(IMAGE_CONFIG_USER_ID_OUTSIDE_RANGES_ERROR));
+                    return Err(ValidationError::ImageConfigUserIdOutsideRanges);
                 }
             }
             if validation_request.settings.run_as_user.overwrite
@@ -162,24 +144,24 @@ where
             }
             if let Some(user_id) = security_context.run_as_user() {
                 if !validation_request.settings.run_as_user.is_valid_id(user_id) {
-                    return Err(anyhow!(USER_ID_OUTSIDE_RANGES_ERROR));
+                    return Err(ValidationError::UserIdOutsideRanges);
                 }
             }
         }
         Rule::MustRunAsNonRoot => {
             if let (Some(user_id), _) = container_user_group_uid {
                 if user_id == 0 {
-                    return Err(anyhow!(IMAGE_CONFIG_USER_ID_CANNOT_BE_ROOT_ERROR));
+                    return Err(ValidationError::ImageConfigUserIdCannotBeRoot);
                 }
             }
             if let Some(run_as_non_root) = security_context.run_as_non_root() {
                 if !run_as_non_root {
-                    return Err(anyhow!(SHOULD_RUN_AS_NON_ROOT_ERROR));
+                    return Err(ValidationError::ShouldRunAsNonRoot);
                 }
             }
             if let Some(user_id) = security_context.run_as_user() {
                 if user_id == 0 {
-                    return Err(anyhow!(CANNOT_USE_ROOT_USER_ID_ERROR));
+                    return Err(ValidationError::CannotUseRootUserId);
                 }
             }
             security_context.set_run_as_non_root(Some(true));
@@ -193,7 +175,7 @@ where
 fn enforce_container_image_group(
     validation_request: &ValidationRequest<Settings>,
     container_image_config: Option<oci_spec::image::ImageConfiguration>,
-) -> Result<()>
+) -> Result<(), ValidationError>
 where
 {
     let container_user_group_uid =
@@ -204,7 +186,7 @@ where
             .run_as_group
             .is_valid_id(group_id)
         {
-            return Err(anyhow!(IMAGE_CONFIG_GROUP_ID_OUTSIDE_RANGES_ERROR,));
+            return Err(ValidationError::ImageConfigGroupIdOutsideRanges);
         }
     }
     Ok(())
@@ -214,7 +196,7 @@ fn enforce_run_as_group<T>(
     security_context_option: Option<T>,
     validation_request: &ValidationRequest<Settings>,
     container_image_config: Option<oci_spec::image::ImageConfiguration>,
-) -> Result<Option<T>>
+) -> Result<Option<T>, ValidationError>
 where
     T: GenericSecurityContext + std::default::Default,
 {
@@ -235,7 +217,7 @@ where
                     .run_as_group
                     .is_valid_id(group_id)
                 {
-                    return Err(anyhow!(GROUP_ID_OUTSIDE_RANGES_ERROR));
+                    return Err(ValidationError::GroupIdOutsideRanges);
                 }
             }
         }
@@ -247,7 +229,7 @@ where
                     .run_as_group
                     .is_valid_id(group_id)
                 {
-                    return Err(anyhow!(GROUP_ID_OUTSIDE_RANGES_ERROR));
+                    return Err(ValidationError::GroupIdOutsideRanges);
                 }
             }
         }
@@ -259,7 +241,7 @@ where
 fn enforce_supplemental_groups(
     security_context_option: Option<apicore::PodSecurityContext>,
     validation_request: &ValidationRequest<Settings>,
-) -> Result<Option<apicore::PodSecurityContext>> {
+) -> Result<Option<apicore::PodSecurityContext>, ValidationError> {
     let mut security_context = security_context_option.unwrap_or_default();
     match validation_request.settings.supplemental_groups.rule {
         Rule::MustRunAs => {
@@ -278,7 +260,7 @@ fn enforce_supplemental_groups(
                         .supplemental_groups
                         .is_valid_id(group_id)
                     {
-                        return Err(anyhow!(GROUP_ID_OUTSIDE_RANGES_ERROR));
+                        return Err(ValidationError::GroupIdOutsideRanges);
                     }
                 }
             }
@@ -291,7 +273,7 @@ fn enforce_supplemental_groups(
                         .supplemental_groups
                         .is_valid_id(group_id)
                     {
-                        return Err(anyhow!(GROUP_ID_OUTSIDE_RANGES_ERROR));
+                        return Err(ValidationError::GroupIdOutsideRanges);
                     }
                 }
             }
@@ -620,7 +602,7 @@ mod tests {
     #[case::may_run_as_supplemental_group_id_outside_range(
         Some(vec![999, 4001]),
         get_may_run_as_rule(),
-        Some(GROUP_ID_OUTSIDE_RANGES_ERROR),
+        Some(ValidationError::GroupIdOutsideRanges),
         None
     )]
     #[case::may_run_as_supplemental_group_missing(None, get_may_run_as_rule(), None, None)]
@@ -639,7 +621,7 @@ mod tests {
     #[case::must_run_as_supplemental_group_id_outside_ranges(
         Some(vec![9000]),
         get_must_run_as_rule(),
-        Some(GROUP_ID_OUTSIDE_RANGES_ERROR),
+        Some(ValidationError::GroupIdOutsideRanges),
         None
     )]
     #[case::must_run_as_supplemental_group_inside_ranges_overwrite(
@@ -657,7 +639,7 @@ mod tests {
     fn test_supplemental_group_rules(
         #[case] supplemental_groups: Option<std::vec::Vec<i64>>,
         #[case] supplemental_groups_strategy: settings::RuleStrategy,
-        #[case] expected_error: Option<&str>,
+        #[case] expected_error: Option<ValidationError>,
         #[case] expected_mutation: Option<PodSecurityContext>,
     ) {
         let security_context = Some(get_pod_security_context(supplemental_groups));
@@ -670,7 +652,7 @@ mod tests {
         };
         let result = enforce_supplemental_groups(security_context, validation_request);
         if let Some(expected_error) = expected_error {
-            assert_eq!(result.unwrap_err().to_string(), expected_error);
+            assert_eq!(result.expect_err("Missing expected error"), expected_error);
         } else {
             let mutated_security_context = result.expect("Expected Ok result");
             assert_eq!(mutated_security_context, expected_mutation);
@@ -688,7 +670,7 @@ mod tests {
     #[case::must_run_as_group_outside_ranges(
         Some(500),
         get_must_run_as_rule(),
-        Some(GROUP_ID_OUTSIDE_RANGES_ERROR),
+        Some(ValidationError::GroupIdOutsideRanges),
         None
     )]
     #[case::run_as_any_missing_group(None, get_run_as_any_rule(), None, None)]
@@ -702,7 +684,7 @@ mod tests {
     #[case::may_run_as_group_id_outside_ranges(
         Some(500),
         get_may_run_as_rule(),
-        Some(GROUP_ID_OUTSIDE_RANGES_ERROR),
+        Some(ValidationError::GroupIdOutsideRanges),
         None
     )]
     #[case::may_run_as_missing_group_id(None, get_may_run_as_rule(), None, None)]
@@ -715,7 +697,7 @@ mod tests {
     fn test_group_rules(
         #[case] run_as_group: Option<i64>,
         #[case] run_as_group_strategy: settings::RuleStrategy,
-        #[case] expected_error: Option<&str>,
+        #[case] expected_error: Option<ValidationError>,
         #[case] expected_mutation: Option<SecurityContext>,
     ) {
         let security_context = Some(get_security_context_with_no_user(run_as_group));
@@ -730,7 +712,7 @@ mod tests {
         let result =
             enforce_run_as_group(security_context, validation_request, container_image_config);
         if let Some(expected_error) = expected_error {
-            assert_eq!(result.unwrap_err().to_string(), expected_error);
+            assert_eq!(result.expect_err("Missing error"), expected_error);
         } else {
             let mutated_security_context = result.expect("Expected Ok result");
             assert_eq!(mutated_security_context, expected_mutation);
@@ -743,7 +725,7 @@ mod tests {
         Some(500),
         None,
         get_must_run_as_rule(),
-        Some(USER_ID_OUTSIDE_RANGES_ERROR),
+        Some(ValidationError::UserIdOutsideRanges),
         None
     )]
     #[case::must_run_as_with_missing_user_id(
@@ -765,7 +747,7 @@ mod tests {
         Some(1000),
         Some(false),
         get_must_run_as_non_root_rule(),
-        Some(SHOULD_RUN_AS_NON_ROOT_ERROR),
+        Some(ValidationError::ShouldRunAsNonRoot),
         None
     )]
     #[case::must_run_as_non_root_with_missing_run_as_non_root(
@@ -779,7 +761,7 @@ mod tests {
         Some(0),
         Some(true),
         get_must_run_as_non_root_rule(),
-        Some(CANNOT_USE_ROOT_USER_ID_ERROR),
+        Some(ValidationError::CannotUseRootUserId),
         None
     )]
     #[case::must_run_as_with_user_id_and_overwrite_is_true(
@@ -793,7 +775,7 @@ mod tests {
         #[case] run_as_user: Option<i64>,
         #[case] run_as_non_root: Option<bool>,
         #[case] run_as_user_strategy: settings::RuleStrategy,
-        #[case] expected_error: Option<&str>,
+        #[case] expected_error: Option<ValidationError>,
         #[case] expected_mutation: Option<SecurityContext>,
     ) {
         let security_context = Some(get_security_context(run_as_user, run_as_non_root));
@@ -808,7 +790,7 @@ mod tests {
         let result =
             enforce_run_as_user_rule(security_context, validation_request, container_image_config);
         if let Some(expected_error) = expected_error {
-            assert_eq!(result.unwrap_err().to_string(), expected_error);
+            assert_eq!(result.expect_err("Missing error"), expected_error);
         } else {
             let mutated_security_context = result.expect("Expected Ok result");
             assert_eq!(mutated_security_context, expected_mutation);
