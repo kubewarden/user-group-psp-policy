@@ -456,16 +456,16 @@ fn validate(payload: &[u8]) -> CallResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use k8s_openapi::api::core::v1::PodSecurityContext;
-    use k8s_openapi::api::core::v1::SecurityContext;
-    use kubewarden::request::KubernetesAdmissionRequest;
-    use kubewarden::response::ValidationResponse;
-    use rstest::rstest;
 
     use jsonpath_lib as jsonpath;
+    use k8s_openapi::api::core::v1::{PodSecurityContext, SecurityContext};
+    use kubewarden::{
+        request::KubernetesAdmissionRequest, response::ValidationResponse, settings::Validatable,
+    };
     use oci_spec::image::{ConfigBuilder, ImageConfigurationBuilder};
-    use settings::Settings;
-    use settings::{IDRange, RuleStrategy};
+    use rstest::rstest;
+
+    use crate::settings::{IDRange, RuleStrategy, Settings};
 
     fn get_must_run_as_rule(overwrite: bool) -> settings::RuleStrategy {
         RuleStrategy {
@@ -809,14 +809,6 @@ mod tests {
         Some(get_security_context_expected_mutation_must_run_as()),
         false
     )]
-    #[case::must_run_as_with_user_and_overwrite_is_set_in_validation_mode(
-        Some(2000),
-        None,
-        get_must_run_as_rule(true),
-        None,
-        Some(get_security_context_expected_mutation_must_run_as()),
-        true
-    )]
     #[case::must_run_as_non_root_with_run_as_non_root_set_false(
         Some(1000),
         Some(false),
@@ -857,14 +849,6 @@ mod tests {
         Some(get_security_context_expected_mutation_must_run_as()),
         false
     )]
-    #[case::must_run_as_with_user_id_and_overwrite_is_true_and_validation_mode(
-        Some(1600),
-        None,
-        get_must_run_as_rule(true),
-        None,
-        Some(get_security_context_expected_mutation_must_run_as()),
-        true
-    )]
     fn test_user_rules(
         #[case] run_as_user: Option<i64>,
         #[case] run_as_non_root: Option<bool>,
@@ -874,14 +858,25 @@ mod tests {
         #[case] validate_only: bool,
     ) {
         let security_context = Some(get_security_context(run_as_user, run_as_non_root));
+
+        let settings = Settings {
+            run_as_user: run_as_user_strategy,
+            validate_only,
+            ..Default::default()
+        };
+        // let's be sure we built valid settings
+        let settings_validation = settings.validate();
+        assert!(
+            settings_validation.is_ok(),
+            "Settings are not valid {:?}",
+            settings_validation
+        );
+
         let validation_request = &ValidationRequest {
-            settings: Settings {
-                run_as_user: run_as_user_strategy,
-                validate_only,
-                ..Default::default()
-            },
+            settings,
             request: KubernetesAdmissionRequest::default(),
         };
+
         let result = enforce_run_as_user_rule(security_context, validation_request, None);
         if let Some(expected_error) = expected_error {
             assert_eq!(result.expect_err("Missing error"), expected_error);
