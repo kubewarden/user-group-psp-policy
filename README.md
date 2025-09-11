@@ -21,6 +21,11 @@ The policy has three settings:
 - `validate_container_image_configuration`: A boolean value that allows the
   policy to validate the `USER` directive in the container image configuration.
   The default value is `false`.
+- `validate_only` is used to control whether a policy can perform mutations. By
+  setting this boolean to `true`, you are telling the policy to check for
+  compliance without making any changes. If a resource violates a rule, the
+  policy will reject the request rather than attempting to fix it. The default
+  value is `false`.
 
 > [!WARNING] When container image validation is enabled, the policy fetches
 > the container image metadata from the container registry. This involves
@@ -72,7 +77,14 @@ Each range object define the user/group ID range used by the rule.
 `overwrite` attribute can be set `true` only with the rule `MustRunAs`. This
 flag configure the policy to mutate the `runAsUser` or `runAsGroup` despite of
 the value present in the request. Even if the value is a valid one. The default
-value of this attribute is `false`.
+value of this attribute is `false`. It's important to note that the
+`validate_only` and `overwrite` flags cannot both be set to true simultaneously.
+
+The `validate_only` flag allows users to use the policy with `mutating: false` in
+the policy configuration. If mutations are disabled (i.e., `mutating: false`),
+and the `validate_only` flag is also `false`, evaluations may be rejected due to
+the protection in place to block mutations. This can hide the actual rule
+violation a resource is committing.
 
 The `validate_container_image_configuration` configuration in the policy
 settings is a boolean value that allows the policy to validate the `USER`
@@ -110,9 +122,39 @@ There are pros and cons to both approaches:
 
 ### Examples
 
-To enforce that user and groups must be set and it should be in the defined ranges:
+To enforce that user and group IDs must be within a defined range:
+
+The configuration below will mutate the resource if it's missing the user or group IDs.
 
 ```yaml
+run_as_user:
+  rule: MustRunAs
+  ranges:
+    - min: 1000
+      max: 1999
+    - min: 3000
+      max: 3999
+run_as_group:
+  rule: MustRunAs
+  ranges:
+    - min: 1000
+      max: 1999
+    - min: 3000
+      max: 3999
+supplemental_groups:
+  rule: MustRunAs
+  ranges:
+    - min: 1000
+      max: 1999
+    - min: 3000
+      max: 3999
+```
+
+Adding the `validate_only` flag to the same configuration will cause the policy
+to reject the resource with a meaningful message:
+
+```yaml
+validate_only: true
 run_as_user:
   rule: MustRunAs
   ranges:

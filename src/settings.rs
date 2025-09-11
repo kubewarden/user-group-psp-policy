@@ -1,28 +1,32 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+const VALIDATION_MODE_OVERWRITE_ERROR: &str = "validate_only cannot be true when overwrite is true";
+
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 #[serde(default)]
 pub(crate) struct IDRange {
     pub min: i64,
     pub max: i64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub(crate) enum Rule {
     MustRunAs,
     MayRunAs,
+    #[default]
     RunAsAny,
     MustRunAsNonRoot,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(default)]
 pub(crate) struct RuleStrategy {
     pub rule: Rule,
     pub ranges: Vec<IDRange>,
     pub overwrite: bool,
 }
+
 impl RuleStrategy {
     pub fn is_valid_id(&self, id: i64) -> bool {
         for range in &self.ranges {
@@ -31,15 +35,6 @@ impl RuleStrategy {
             }
         }
         false
-    }
-}
-impl Default for RuleStrategy {
-    fn default() -> Self {
-        RuleStrategy {
-            rule: Rule::RunAsAny,
-            ranges: vec![],
-            overwrite: false,
-        }
     }
 }
 
@@ -118,6 +113,7 @@ pub(crate) struct Settings {
     pub run_as_group: RuleStrategy,
     pub supplemental_groups: RuleStrategy,
     pub validate_container_image_configuration: bool,
+    pub validate_only: bool,
 }
 
 impl kubewarden::settings::Validatable for Settings {
@@ -154,6 +150,13 @@ impl kubewarden::settings::Validatable for Settings {
                 return Err(error.to_string());
             }
         }
+        if self.validate_only
+            && (self.run_as_user.overwrite
+                || self.run_as_group.overwrite
+                || self.supplemental_groups.overwrite)
+        {
+            return Err(VALIDATION_MODE_OVERWRITE_ERROR.to_string());
+        }
         Ok(())
     }
 }
@@ -163,6 +166,7 @@ mod tests {
     use super::*;
 
     use kubewarden_policy_sdk::settings::Validatable;
+    use rstest::rstest;
 
     #[test]
     fn validate_settings() -> Result<(), ()> {
@@ -717,5 +721,43 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[rstest]
+    #[case::overwrite_user(true, false, false)]
+    #[case::overwrite_group(false, true, false)]
+    #[case::overwrite_supplemental(false, false, true)]
+    fn overwrite_and_validation_mode_settings_test(
+        #[case] overwrite_user: bool,
+        #[case] overwrite_group: bool,
+        #[case] overwrite_supplemental: bool,
+    ) {
+        let rule_strategy = RuleStrategy {
+            rule: Rule::MustRunAs,
+            ranges: vec![IDRange {
+                min: 1000,
+                max: 1010,
+            }],
+            overwrite: false,
+        };
+
+        let settings = Settings {
+            validate_only: true,
+            run_as_user: RuleStrategy {
+                overwrite: overwrite_user,
+                ..rule_strategy.clone()
+            },
+            run_as_group: RuleStrategy {
+                overwrite: overwrite_group,
+                ..rule_strategy.clone()
+            },
+            supplemental_groups: RuleStrategy {
+                overwrite: overwrite_supplemental,
+                ..rule_strategy.clone()
+            },
+            ..Default::default()
+        };
+        let error = settings.validate().expect_err("Expect error");
+        assert_eq!(error, VALIDATION_MODE_OVERWRITE_ERROR);
     }
 }
