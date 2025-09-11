@@ -1,6 +1,6 @@
 [package]
 name = "user-group-psp"
-version = "1.0.5"
+version = "1.1.0"
 authors = [
   "Kubewarden developers <cncf-kubewarden-maintainers@lists.cncf.io>",
   "José Guilherme Vanz <jguilhermevanz@suse.com>",
