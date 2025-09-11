@@ -3,28 +3,30 @@ use serde::{Deserialize, Serialize};
 
 const VALIDATION_MODE_OVERWRITE_ERROR: &str = "validate_only cannot be true when overwrite is true";
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 #[serde(default)]
 pub(crate) struct IDRange {
     pub min: i64,
     pub max: i64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub(crate) enum Rule {
     MustRunAs,
     MayRunAs,
+    #[default]
     RunAsAny,
     MustRunAsNonRoot,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(default)]
 pub(crate) struct RuleStrategy {
     pub rule: Rule,
     pub ranges: Vec<IDRange>,
     pub overwrite: bool,
 }
+
 impl RuleStrategy {
     pub fn is_valid_id(&self, id: i64) -> bool {
         for range in &self.ranges {
@@ -33,15 +35,6 @@ impl RuleStrategy {
             }
         }
         false
-    }
-}
-impl Default for RuleStrategy {
-    fn default() -> Self {
-        RuleStrategy {
-            rule: Rule::RunAsAny,
-            ranges: vec![],
-            overwrite: false,
-        }
     }
 }
 
