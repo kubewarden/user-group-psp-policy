@@ -147,7 +147,8 @@ where
                 if !validation_request.settings.run_as_user.is_valid_id(user_id) {
                     return Err(ValidationError::UserIdOutsideRanges);
                 }
-            } else if validation_request.settings.validate_only {
+            }
+            if validation_request.settings.validate_only {
                 return Err(ValidationError::MissingUserId);
             }
         }
@@ -161,17 +162,17 @@ where
                 if !run_as_non_root {
                     return Err(ValidationError::ShouldRunAsNonRoot);
                 }
-            } else if validation_request.settings.validate_only {
-                return Err(ValidationError::ShouldRunAsNonRoot);
             }
             if let Some(user_id) = security_context.run_as_user() {
                 if user_id == 0 {
                     return Err(ValidationError::CannotUseRootUserId);
                 }
             }
-            if !validation_request.settings.validate_only {
-                security_context.set_run_as_non_root(Some(true));
+            if validation_request.settings.validate_only {
+                return Err(ValidationError::ShouldRunAsNonRoot);
             }
+
+            security_context.set_run_as_non_root(Some(true));
             return Ok(Some(security_context));
         }
         _ => {}
@@ -227,7 +228,8 @@ where
                 {
                     return Err(ValidationError::GroupIdOutsideRanges);
                 }
-            } else if validation_request.settings.validate_only {
+            }
+            if validation_request.settings.validate_only {
                 return Err(ValidationError::MissingGroupId);
             }
         }
@@ -274,7 +276,8 @@ fn enforce_supplemental_groups(
                         return Err(ValidationError::GroupIdOutsideRanges);
                     }
                 }
-            } else if validation_request.settings.validate_only {
+            }
+            if validation_request.settings.validate_only {
                 return Err(ValidationError::MissingSupplementalGroupId);
             }
         }
@@ -380,7 +383,7 @@ fn validate(payload: &[u8]) -> CallResult {
                                     None,
                                     None,
                                     None,
-                                )
+                                );
                             }
                         }
                     }
@@ -394,7 +397,7 @@ fn validate(payload: &[u8]) -> CallResult {
                                 None,
                                 None,
                                 None,
-                            )
+                            );
                         }
                     }
                 }
@@ -411,7 +414,7 @@ fn validate(payload: &[u8]) -> CallResult {
                                 None,
                                 None,
                                 None,
-                            )
+                            );
                         }
                     }
                 }
