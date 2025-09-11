@@ -166,6 +166,7 @@ mod tests {
     use super::*;
 
     use kubewarden_policy_sdk::settings::Validatable;
+    use rstest::rstest;
 
     #[test]
     fn validate_settings() -> Result<(), ()> {
@@ -721,33 +722,38 @@ mod tests {
 
         Ok(())
     }
-    #[test]
-    fn overwrite_and_validation_mode_settings_test() {
+
+    #[rstest]
+    #[case::overwrite_user(true, false, false)]
+    #[case::overwrite_group(false, true, false)]
+    #[case::overwrite_supplemental(false, false, true)]
+    fn overwrite_and_validation_mode_settings_test(
+        #[case] overwrite_user: bool,
+        #[case] overwrite_group: bool,
+        #[case] overwrite_supplemental: bool,
+    ) {
+        let rule_strategy = RuleStrategy {
+            rule: Rule::MustRunAs,
+            ranges: vec![IDRange {
+                min: 1000,
+                max: 1010,
+            }],
+            overwrite: false,
+        };
+
         let settings = Settings {
             validate_only: true,
             run_as_user: RuleStrategy {
-                rule: Rule::MustRunAs,
-                ranges: vec![IDRange {
-                    min: 1000,
-                    max: 1010,
-                }],
-                overwrite: true,
+                overwrite: overwrite_user,
+                ..rule_strategy.clone()
             },
             run_as_group: RuleStrategy {
-                rule: Rule::MustRunAs,
-                ranges: vec![IDRange {
-                    min: 1000,
-                    max: 1010,
-                }],
-                overwrite: true,
+                overwrite: overwrite_group,
+                ..rule_strategy.clone()
             },
             supplemental_groups: RuleStrategy {
-                rule: Rule::MustRunAs,
-                ranges: vec![IDRange {
-                    min: 1000,
-                    max: 1010,
-                }],
-                overwrite: true,
+                overwrite: overwrite_supplemental,
+                ..rule_strategy.clone()
             },
             ..Default::default()
         };
