@@ -4,16 +4,16 @@
 #
 # This config can be saved to its default location with:
 #   kwctl scaffold artifacthub > artifacthub-pkg.yml 
-version: 1.1.0
+version: 1.1.1
 name: user-group-psp
 displayName: User Group PSP
-createdAt: 2025-09-11T14:08:07.757435302Z
+createdAt: 2025-10-20T14:00:58.562130124Z
 description: Kubewarden Policy that controls containers user and groups
 license: Apache-2.0
 homeURL: https://github.com/kubewarden/user-group-psp-policy
 containersImages:
 - name: policy
-  image: ghcr.io/kubewarden/policies/user-group-psp:v1.1.0
+  image: ghcr.io/kubewarden/policies/user-group-psp:v1.1.1
 keywords:
 - psp
 - container
@@ -21,17 +21,17 @@ keywords:
 - group
 links:
 - name: policy
-  url: https://github.com/kubewarden/user-group-psp-policy/releases/download/v1.1.0/policy.wasm
+  url: https://github.com/kubewarden/user-group-psp-policy/releases/download/v1.1.1/policy.wasm
 - name: source
   url: https://github.com/kubewarden/user-group-psp-policy
 install: |
   The policy can be obtained using [`kwctl`](https://github.com/kubewarden/kwctl):
   ```console
-  kwctl pull ghcr.io/kubewarden/policies/user-group-psp:v1.1.0
+  kwctl pull ghcr.io/kubewarden/policies/user-group-psp:v1.1.1
   ```
   Then, generate the policy manifest and tune it to your liking. For example:
   ```console
-  kwctl scaffold manifest -t ClusterAdmissionPolicy registry://ghcr.io/kubewarden/policies/user-group-psp:v1.1.0
+  kwctl scaffold manifest -t ClusterAdmissionPolicy registry://ghcr.io/kubewarden/policies/user-group-psp:v1.1.1
   ```
 maintainers:
 - name: Kubewarden developers
